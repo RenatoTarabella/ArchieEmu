@@ -145,3 +145,10 @@ almeno due). Genesis Professional 3.04 si avvia con il disco 1 in :0 e il disco 
 1. Tastiera completa (INKEY negativi, tasti funzione) e suono.
 2. ROM intercambiabili (`--rom`): BASIC oggi, poi Forth e altri linguaggi.
 3. Più avanti: CPU ARMv3/v4 a 32 bit e hardware del RiscPC per RISC OS 5.
+
+## Licenza
+
+Il codice dell'emulatore è sotto licenza MIT (vedi `LICENSE`). I componenti in
+`third_party/riscos` (modulo BBC BASIC V) e il font di sistema in `src/riscos/font.h`
+vengono da RISC OS Open e restano sotto licenza Apache 2.0. Le ROM di RISC OS 3.x e
+le immagini dei dischetti non sono incluse e non vanno ridistribuite.

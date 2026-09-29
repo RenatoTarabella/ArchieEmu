@@ -1,10 +1,10 @@
-# Componenti di RISC OS
+# RISC OS components
 
-- `BASIC`: modulo BBC BASIC V 1.87 (13 agosto 2025) dal pacchetto "System Resources"
-  di RISC OS Open (`PlingSystem.zip`, `!System/310/Modules/BASIC`), compilato per
-  RISC OS 3.10 e quindi eseguibile su ARM2/ARM3. È compresso con modsqz; l'emulatore
-  lo espande al caricamento (`src/riscos/module.c`).
-- `src/riscos/font.h` è generato da `Kernel/s/vdu/vdufontl1` dei sorgenti di RISC OS 5.
+- `BASIC`: BBC BASIC V 1.87 module (13 August 2025) from RISC OS Open's
+  "System Resources" package (`PlingSystem.zip`, `!System/310/Modules/BASIC`), built
+  for RISC OS 3.10 and therefore able to run on ARM2/ARM3. It is compressed with
+  modsqz; the emulator expands it on load (`src/riscos/module.c`).
+- `src/riscos/font.h` is generated from `Kernel/s/vdu/vdufontl1` in the RISC OS 5 sources.
 
-Entrambi sono © Acorn Computers / RISC OS Developments e distribuiti sotto licenza
-Apache 2.0 (vedi `LICENSE`).
+Both are © Acorn Computers / RISC OS Developments and distributed under the
+Apache 2.0 licence (see `LICENSE`).

@@ -1,154 +1,194 @@
-# ARM — emulatore modulare ARMv2 (stile Acorn Archimedes)
+# ArchieEmu — a modular ARMv2 / Acorn Archimedes emulator
 
-Emulatore in C99, costruito a moduli che si parlano solo attraverso interfacce:
+An emulator written in C99, built from modules that only talk to each other
+through interfaces. It runs in two flavours:
+
+- **`archie.exe`** — a low-level Acorn Archimedes A3000/A310: the CPU executes the
+  real RISC OS 3.11 ROM and talks to emulated MEMC, IOC and VIDC chips, floppy
+  drives, keyboard, mouse and sound. Original software such as Zarch, Elite and
+  Pacmania runs on it.
+- **`armwin.exe`** — a lightweight BBC BASIC V machine: the original BASIC module
+  runs on the emulated ARM2, while the RISC OS calls it makes are handled in C,
+  with a framebuffer that goes up to 32-bit truecolour.
+
+| RISC OS 3.11 desktop | Ray tracer in BBC BASIC + ARM assembler |
+|---|---|
+| ![RISC OS 3.11 desktop](docs/desktop.png) | ![Ray tracer, MODE 28, 256 colours](docs/raytracer-mode28.png) |
 
 ```
- ┌────────────┐   ArmBus    ┌───────────┐   pagine 4 KB   ┌──────────────┐
- │  CPU ARMv2 │────────────▶│    Bus    │────────────────▶│ RAM / ROM    │
- │  src/cpu   │             │ src/core  │────────────────▶│ dispositivi  │
+ ┌────────────┐   ArmBus    ┌───────────┐   4 KB pages    ┌──────────────┐
+ │  ARMv2 CPU │────────────▶│    Bus    │────────────────▶│ RAM / ROM    │
+ │  src/cpu   │             │ src/core  │────────────────▶│ devices      │
  └─────┬──────┘             └───────────┘                 └──────────────┘
-       │ gancio SWI
+       │ SWI hook
  ┌─────▼──────────────┐
- │ HLE RISC OS (SWI)  │  OS_WriteC, OS_Write0, OS_NewLine, OS_ReadC, OS_Exit...
+ │ RISC OS HLE (SWIs) │  OS_WriteC, OS_Write0, OS_NewLine, OS_ReadC, OS_Exit...
  │ src/hle            │
  └────────────────────┘
 ```
 
-- **`src/cpu/arm2.c`**: ARMv2a (ARM2 + SWP). R15 contiene insieme PC e PSR a 26 bit,
-  con i banchi FIQ/IRQ/SVC, tutte le eccezioni (anche address exception e abort),
-  TEQP e LDM `^`, e i cicli S/N/I stimati.
-- **`src/cpu/arm2_disasm.c`**: disassemblatore con la sintassi del BBC BASIC.
-- **`src/core/bus.c`**: spazio di 64 MB, memoria diretta o callback dei dispositivi.
-- **`src/hle/riscos_swi.c`**: le SWI di RISC OS eseguite dall'host.
+- **`src/cpu/arm2.c`**: ARMv2a (ARM2 + SWP). R15 holds both the 26-bit PC and the
+  PSR, with FIQ/IRQ/SVC register banks, every exception (including address
+  exceptions and aborts), TEQP and LDM `^`, S/N/I cycle counting and the 3-stage
+  prefetch pipeline.
+- **`src/cpu/arm2_disasm.c`**: disassembler using BBC BASIC assembler syntax.
+- **`src/core/bus.c`**: 64 MB address space, direct memory or device callbacks.
+- **`src/hle/riscos_swi.c`**: RISC OS SWIs executed by the host.
 
-## Compilare e provare
+## Building and testing
+
+Windows, Visual Studio 2022 and CMake:
 
 ```
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
-build\Release\test_arm2.exe                       # test specifici dei 26 bit
-.venv\Scripts\python tests\diff_unicorn.py        # confronto con Unicorn
+build\Release\test_arm2.exe                       # 26-bit specific tests
+.venv\Scripts\python tests\diff_unicorn.py        # comparison against Unicorn
 .venv\Scripts\python tools\asm.py demos\primes.s build\demos\primes.bin
 build\Release\armemu.exe -s build\demos\primes.bin
 ```
 
-`armemu` carica il binario a &8000 e lo esegue in modo utente. Le opzioni sono
-`-t` (traccia disassemblata), `-s` (statistiche), `-a` (indirizzo di caricamento),
-`-m` (MB di RAM) e `-c` (limite di cicli).
+`armemu` loads a binary at &8000 and runs it in user mode. Options: `-t`
+(disassembled trace), `-s` (statistics), `-a` (load address), `-m` (MB of RAM)
+and `-c` (cycle limit).
 
-L'ambiente `.venv` contiene Unicorn, Keystone e Capstone. Si ricrea con
-`python -m venv .venv` seguito da `.venv\Scripts\pip install unicorn keystone-engine capstone`.
+The `.venv` environment contains Unicorn, Keystone and Capstone. Recreate it with
+`python -m venv .venv` followed by `.venv\Scripts\pip install unicorn keystone-engine capstone`.
 
-## Verifica
+## Verification
 
-- `test_arm2`: 111 controlli sui comportamenti propri dell'ARMv2: R15 come Rn
-  (solo PC) e come Rm (PC+PSR), +12 con lo shift da registro e in STR/STM,
-  banchi, eccezioni e ritorni, IRQ, protezione del PSR in modo utente, LDR non
-  allineata, write-back della base in STM, abort e disassemblatore.
-- `diff_unicorn.py`: elaborazione dati e moltiplicazione confrontate bit per bit
-  con Unicorn (QEMU) su 1,2 milioni di istruzioni casuali, con zero differenze.
+- `test_arm2`: 111 checks of ARMv2-specific behaviour: R15 as Rn (PC only) and
+  as Rm (PC+PSR), +12 with register-specified shifts and in STR/STM, register
+  banks, exceptions and returns, IRQs, PSR protection in user mode, unaligned
+  LDR, base write-back in STM, aborts and the disassembler.
+- `diff_unicorn.py`: data processing and multiplication compared bit for bit with
+  Unicorn (QEMU) over 1.2 million random instructions, with zero differences.
+- `test_memc`, `test_vidc`, `test_kbd`, `test_cmos`, `test_fdc`: the Archimedes chips.
+- `test_basic`: the complete BBC BASIC machine.
 
-## BBC BASIC V
+## BBC BASIC V machine
 
-`third_party/riscos/BASIC` è il BBC BASIC V 1.87 originale di RISC OS Open
-(Apache 2.0), compilato per RISC OS 3.10: gira sulla nostra CPU ARMv2 come
-modulo "ROM". Il kernel RISC OS non è emulato istruzione per istruzione:
-le SWI che il BASIC chiama sono eseguite in C (`src/riscos/kernel.c`), e
-l'uscita passa da un driver VDU (`src/riscos/vdu.c`) che disegna nel
-framebuffer a &2000000, nel formato nativo del modo (fino a 32 bpp truecolor).
+`third_party/riscos/BASIC` is the original BBC BASIC V 1.87 from RISC OS Open
+(Apache 2.0), built for RISC OS 3.10: it runs on our ARMv2 CPU as a "ROM" module.
+The RISC OS kernel is not emulated instruction by instruction: the SWIs BASIC
+calls are executed in C (`src/riscos/kernel.c`), and output goes through a VDU
+driver (`src/riscos/vdu.c`) that draws into the framebuffer at &2000000 in the
+mode's native format (up to 32 bpp truecolour).
 
 ```
-build\Release\armwin.exe                  # finestra: clock ARM2 a 8 MHz, F12 = turbo
-build\Release\armwin.exe --mhz 25         # un ARM3 a 25 MHz
-build\Release\armbasic.exe < listato.txt  # console, per i test
-build\Release\test_basic.exe              # test della macchina completa
+build\Release\armwin.exe                  # window: ARM2 clock at 8 MHz, F12 = turbo
+build\Release\armwin.exe --mhz 25         # an ARM3 at 25 MHz
+build\Release\armbasic.exe < listing.txt  # console, for tests
+build\Release\test_basic.exe              # tests of the whole machine
 ```
 
-Nella finestra: Escape interrompe il programma, Ctrl+V incolla un listato,
-F12 alterna il clock limitato e il turbo. Per il truecolor:
-`MODE "X640 Y480 C16M"` oppure `MODE 49`, poi `COLOUR r,g,b` e `GCOL r,g,b`.
+In the window: Escape interrupts the program, Ctrl+V pastes a listing, F12
+toggles between the limited clock and turbo. For truecolour use
+`MODE "X640 Y480 C16M"` or `MODE 49`, then `COLOUR r,g,b` and `GCOL r,g,b`.
 
-### File
+### Files
 
-Il disco è la cartella `disc` del progetto (opzione `--disc` per cambiarla).
-Come in RPCEmu/HostFS, il tipo RISC OS sta nel suffisso: `SAVE "mandel"`
-crea `disc\mandel,ffb`. Il `.` di RISC OS separa le cartelle e `/` fa da
-estensione: `mandelbrot/bas` è `mandelbrot.bas` su Windows.
+The disc is the project's `disc` folder (change it with `--disc`). As in
+RPCEmu's HostFS, the RISC OS file type is a suffix: `SAVE "mandel"` creates
+`disc\mandel,ffb`. The RISC OS `.` separates directories and `/` acts as the
+extension: `mandelbrot/bas` is `mandelbrot.bas` on Windows.
 
-- `SAVE`, `LOAD`, `CHAIN`: programmi tokenizzati;
-- `TEXTLOAD`, `TEXTSAVE`: listati di testo, apribili con il Blocco note;
+- `SAVE`, `LOAD`, `CHAIN`: tokenised programs;
+- `TEXTLOAD`, `TEXTSAVE`: plain text listings, editable in Notepad;
 - `OPENIN`/`OPENOUT`/`OPENUP`, `PRINT#`, `INPUT#`, `BGET#`, `BPUT#`, `PTR#`, `EXT#`, `EOF#`;
-- `*CAT` (o `*.`), `*EX`, `*DELETE`, `*RENAME`, `*CDIR`, `*TYPE`.
+- `*CAT` (or `*.`), `*EX`, `*DELETE`, `*RENAME`, `*CDIR`, `*TYPE`.
 
-## Macchina Archimedes (ROM originali)
+### Demo programs
 
-`archie.exe` è un Archimedes A3000/A310 emulato a basso livello: la CPU esegue
-la ROM vera di RISC OS e parla con i chip, come sulla macchina reale.
+In `disc`: `mandel` (Mandelbrot set), `Harmonograph`, and `Ray`, a ray tracer
+with shadows, reflective spheres and a choice of screen modes. Its ray/sphere
+intersection kernel is written in fixed point with the BBC BASIC inline ARM
+assembler (`PROCassemble`), about 1.6× faster than pure BASIC on an 8 MHz ARM2.
 
-| Modulo | File | Cosa fa |
+| MODE 28, 256 colours (VIDC1) | MODE 49, 16M colours (emulator only) |
+|---|---|
+| ![MODE 28](docs/raytracer-mode28.png) | ![MODE 49](docs/raytracer-mode49.png) |
+
+## Archimedes machine (original ROMs)
+
+`archie.exe` is a low-level emulation of an Archimedes A3000/A310: the CPU runs
+the real RISC OS ROM and talks to the chips, just like the real machine.
+
+| Module | File | What it does |
 |---|---|---|
-| MEMC1a | `src/archie/memc.c` | traduzione a pagine (CAM), protezioni PPL, ROM a 0 al reset, DMA |
-| IOC | `src/archie/ioc.c` | IRQ/FIQ, timer a 2 MHz, seriale KART, pin I2C |
-| VIDC1a | `src/archie/vidc.c` | palette, modi da 1 a 8 bpp, cursore hardware |
-| Tastiera | `src/archie/kbd.c` | protocollo del micro della tastiera, mouse |
-| CMOS | `src/archie/cmos.c` | PCF8583 su I2C, orologio, somma di controllo di RISC OS |
-| Floppy | `src/archie/fdc.c` | WD1772 con immagini ADFS `.adf` |
-| Macchina | `src/archie/archie.c` | mappa dell'I/O dell'A310, tempo a 24 MHz, eventi |
+| MEMC1a | `src/archie/memc.c` | page translation (CAM), PPL protection, ROM at 0 on reset, DMA |
+| IOC | `src/archie/ioc.c` | IRQ/FIQ, 2 MHz timers, KART serial link, I2C pins |
+| VIDC1a | `src/archie/vidc.c` | palette, 1 to 8 bpp modes, hardware cursor, sound |
+| Keyboard | `src/archie/kbd.c` | keyboard microcontroller protocol, mouse |
+| CMOS | `src/archie/cmos.c` | PCF8583 on I2C, clock, RISC OS checksum |
+| Floppy | `src/archie/fdc.c` | WD1772 with ADFS `.adf` images, two drives |
+| Machine | `src/archie/archie.c` | A310 I/O map, 24 MHz time base, events |
 
-Le ROM vanno in `roms\` (non sono incluse: RISC OS 3.1 non è open source).
-`archie.exe` cerca `roms\1. Major\ROM311`; la CMOS si salva accanto alla ROM
-(`ROM311.cmos`). Il POST di RISC OS 3 passa tutti i test. Per seguire il boot:
+The ROMs go in `roms\` and are **not included**: RISC OS 3.1 is not open source.
+`archie.exe` looks for `roms\1. Major\ROM311`; the CMOS is saved next to the ROM
+(`ROM311.cmos`). The RISC OS 3 POST passes every test. To follow the boot:
 
 ```
-build\Release\archie_boot.exe --rom "roms\1. Major\ROM311" --ms 20000 --png schermo.png
+build\Release\archie_boot.exe --rom "roms\1. Major\ROM311" --ms 20000 --png screen.png
 ```
 
-Stampa il rapporto del POST, le eccezioni, lo stato dei chip e il codice intorno al PC.
+It prints the POST report, exceptions, chip state and the code around the PC.
+`--floppy` / `--floppy2` insert disc images and `--keys "{F12}*cat :0{ENTER}"`
+types on the emulated keyboard.
 
-### Tempi, suono e tastiera
+### Timing, sound and keyboard
 
-- **Tempi fedeli dell'ARM2**: ogni istruzione conta i cicli S, N e I del
-  datasheet. Sul MEMC a 8 MHz un ciclo N vale 2 tick, i fetch dalla ROM costano
-  quanto il tempo d'accesso programmato da RISC OS (325 ns), e il DMA video si
-  prende la sua quota di banda (16% nei modi da 80 KB). La macchina BASIC usa
-  gli stessi costi, più il lavoro del driver VDU tarato confrontando gli stessi
-  programmi con RISC OS 3.11 emulato: vedi le costanti COST_* in `src/riscos/vdu.c`.
-- **Suono** (`archie.exe`): il DMA del MEMC porta al VIDC i byte in formato
-  logaritmico, uno ogni SFR+2 µs, sugli 8 canali stereo; si ricampiona a 48 kHz.
-  Ctrl+F10 spegne e riaccende l'audio.
-- **Tastiera** (`src/frontend/archie_keys.c`): lettere, cifre e tasti di
-  controllo per posizione; i simboli seguono il carattere della disposizione di
-  Windows (RISC OS 3.11 non ha una disposizione spagnola), le lettere accentate
-  si compongono con Alt + tastierino. Gli eventi tradotti escono uno ogni 40 ms,
-  perché RISC OS campiona la tastiera a ogni centesimo. `test_keys_es` digita con
-  la disposizione spagnola vera di Windows e rilegge lo schermo con il font della ROM.
-- **Pipeline dell'ARM2**: le due istruzioni successive sono già lette quando si
-  esegue quella corrente; il codice che le riscrive non ne vede l'effetto (la
-  protezione anticopia di Elite ci conta).
+- **Faithful ARM2 timing**: every instruction counts the S, N and I cycles from
+  the datasheet. On an 8 MHz MEMC an N cycle costs 2 ticks, ROM fetches cost the
+  access time RISC OS programs (325 ns), and video DMA takes its share of the
+  bandwidth (16% in 80 KB modes). The BASIC machine uses the same costs, plus the
+  VDU driver's work, calibrated by running the same programs on emulated
+  RISC OS 3.11: see the COST_* constants in `src/riscos/vdu.c`.
+- **Sound** (`archie.exe`): MEMC DMA feeds the VIDC with logarithmic bytes, one
+  every SFR+2 µs, across 8 stereo channels; the output is resampled to 48 kHz.
+- **Keyboard** (`src/frontend/archie_keys.c`): letters, digits and control keys
+  map by position; symbols follow the character produced by the Windows layout
+  (RISC OS 3.11 has no Spanish layout), and accented letters are composed with
+  Alt + keypad. Translated events are sent every 40 ms, because RISC OS samples
+  the keyboard every centisecond. `test_keys_es` types with the real Windows
+  Spanish layout and reads the screen back using the ROM font.
+- **ARM2 pipeline**: the next two instructions are already fetched while the
+  current one executes, so code that rewrites them does not see the change
+  (Elite's copy protection relies on this).
 
-Scorciatoie di `archie.exe`: **Ctrl+F9** sceglie il dischetto (con Shift l'unità 1),
-**Ctrl+F8** lo espelle, trascinare un `.adf` sulla finestra lo inserisce; clic nella
-finestra cattura il mouse, **Ctrl+F11** lo libera; **Ctrl+F12** turbo,
-**Ctrl+Shift+F12** reset, **Ctrl+F10** audio.
+`archie.exe` shortcuts:
 
-Giochi provati: Zarch (Play It Again Sam 2), Pacmania, Elite (va lanciato con un
-doppio clic dal desktop: dalla riga di comando F12 si ferma con "Wimp is
-currently active").
+| Keys | Action |
+|---|---|
+| Ctrl+F9 | choose a floppy image (with Shift: drive 1) |
+| Ctrl+F8 | eject |
+| Ctrl+F10 | sound on/off |
+| Ctrl+F11 | release the mouse (click in the window to capture it) |
+| Ctrl+F12 | turbo |
+| Ctrl+Shift+F12 | reset |
 
-Le unità floppy sono due (`--floppy` e `--floppy2`; la CMOS ne configura sempre
-almeno due). Genesis Professional 3.04 si avvia con il disco 1 in :0 e il disco 2
-(che contiene `!GenLib`) in :1: si aprono le finestre di :0 e :1 (così il Filer
-"vede" `!System`, `!Scrap` e `!GenLib`) e poi doppio clic su `!Genesis`.
+Dropping an `.adf` file on the window also inserts it.
 
-## Prossimi passi
+Tested software: Zarch (Play It Again Sam 2), Pacmania, Elite (launch it with a
+double click from the desktop: from the F12 command line it stops with
+"Wimp is currently active"), Genesis Professional 3.04 (disc 1 in :0 and disc 2,
+which holds `!GenLib`, in :1; open both drive windows so the Filer sees
+`!System`, `!Scrap` and `!GenLib`, then double click `!Genesis`).
 
-1. Tastiera completa (INKEY negativi, tasti funzione) e suono.
-2. ROM intercambiabili (`--rom`): BASIC oggi, poi Forth e altri linguaggi.
-3. Più avanti: CPU ARMv3/v4 a 32 bit e hardware del RiscPC per RISC OS 5.
+`tools/mkadfs.py` builds 800 KB ADFS D images from a directory, a zip with
+RISC OS file types, or a Spark/Arc archive.
 
-## Licenza
+## Next steps
 
-Il codice dell'emulatore è sotto licenza MIT (vedi `LICENSE`). I componenti in
-`third_party/riscos` (modulo BBC BASIC V) e il font di sistema in `src/riscos/font.h`
-vengono da RISC OS Open e restano sotto licenza Apache 2.0. Le ROM di RISC OS 3.x e
-le immagini dei dischetti non sono incluse e non vanno ridistribuite.
+1. Swappable ROMs for the BASIC machine (`--rom`): BASIC today, then Forth and
+   other languages.
+2. Hard disc and CD-ROM images.
+3. Later: 32-bit ARMv3/v4 CPU and Risc PC hardware for RISC OS 5.
+
+## Licence
+
+The emulator code is released under the MIT licence (see `LICENSE`). The
+components in `third_party/riscos` (the BBC BASIC V module) and the system font
+in `src/riscos/font.h` come from RISC OS Open and remain under the Apache 2.0
+licence. RISC OS 3.x ROMs and floppy images are not included and must not be
+redistributed.

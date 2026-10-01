@@ -14,14 +14,13 @@
  * si compongono con Alt + codice sul tastierino, come in RISC OS.
  * Mouse come su un Archimedes vero:
  *   tasto sinistro = Select, centrale = Menu, destro = Adjust
- *   (--right-menu o Ctrl+Alt+F7: destro = Menu, per i mouse a due tasti).
+ *   (--right-menu o il menu Mouse: destro = Menu, per i mouse a due tasti).
  * Un clic nella finestra cattura il mouse (serve ai giochi come Zarch,
- * che leggono solo il movimento): Ctrl+Alt+F11 lo libera.
- * I comandi dell'emulatore usano Ctrl+Alt, perche' Ctrl+F12 e Ctrl+Shift+F12
- * servono a RISC OS: Ctrl+Alt+F12 alterna il clock dell'ARM2 (8 MHz) e il
- * turbo; Ctrl+Alt+Shift+F12 resetta la macchina; Ctrl+Alt+F10 spegne e
- * riaccende l'audio. Ctrl+Alt+F9 sceglie il dischetto dell'unita' 0 (con
- * Shift l'unita' 1), Ctrl+Alt+F8 lo espelle. Trascinando un'immagine .adf sulla finestra la si
+ * che leggono solo il movimento): Ctrl+Alt, premuti e rilasciati da soli,
+ * lo liberano. I comandi dell'emulatore (dischetti, turbo, audio, reset)
+ * stanno nella barra dei menu, come sul Mac: nessun tasto viene tolto a
+ * RISC OS. Il reset si fa anche con Ctrl+Break (Ctrl+Pausa), come
+ * sull'Archimedes. Trascinando un'immagine .adf/.hfe sulla finestra la si
  * inserisce nell'unita' 0 (con Shift nell'unita' 1).
  */
 #define WIN32_LEAN_AND_MEAN
@@ -141,6 +140,7 @@ typedef struct App {
     int       img_x, img_y, img_w, img_h;
     int       captured;              /* mouse catturato: movimento relativo */
     int       right_menu;            /* tasto destro = Menu invece di Adjust */
+    int       free_armed;            /* Ctrl+Alt premuti da soli: al rilascio si libera il mouse */
 } App;
 
 static App app;
@@ -164,11 +164,7 @@ static const char *base_name(const char *p)
 static void update_title(void)
 {
     char t[256];
-    snprintf(t, sizeof t, "Archimedes - %s   [%s, Ctrl+Alt+F12 %s]%s%s%s%s",
-             app.rom_name, app.turbo ? "TURBO" : "ARM2 8 MHz", app.turbo ? "per 8 MHz" : "per il turbo",
-             app.captured ? "   [mouse catturato: Ctrl+Alt+F11 per liberarlo]" : "   [clic per catturare il mouse]",
-             app.floppy_name[0][0] ? "   :0 " : "", app.floppy_name[0], app.floppy_name[1][0] ? "  :1 " : "");
-    if (app.floppy_name[1][0]) strncat(t, app.floppy_name[1], sizeof t - strlen(t) - 1);
+    snprintf(t, sizeof t, "Archimedes - %s%s", app.rom_name, app.captured ? "   (Ctrl+Alt: free mouse)" : "");
     if (strcmp(t, app.title)) {
         strcpy(app.title, t);
         SetWindowTextA(app.hwnd, t);
@@ -194,7 +190,7 @@ static void fit_window(void)
     while (scale > 1 && (dw * scale > (work.right - work.left) * 9 / 10 ||
                          dh * scale > (work.bottom - work.top) * 9 / 10)) scale--;
     RECT r = { 0, 0, dw * scale, dh * scale };
-    AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
+    AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, TRUE);           /* con la barra dei menu */
     SetWindowPos(app.hwnd, NULL, 0, 0, r.right - r.left, r.bottom - r.top, SWP_NOMOVE | SWP_NOZORDER);
 }
 
@@ -335,53 +331,83 @@ static void choose_floppy(int drive)
     if (slash) *slash = 0;
 }
 
+/* barra dei menu, come sul Mac */
+enum { CMD_INSERT0 = 100, CMD_INSERT1, CMD_EJECT0, CMD_EJECT1, CMD_TURBO, CMD_SOUND, CMD_RESET, CMD_RIGHT_MENU, CMD_QUIT };
+
+static HMENU build_menu(void)
+{
+    HMENU bar = CreateMenu(), disc = CreatePopupMenu(), mach = CreatePopupMenu(), mouse = CreatePopupMenu();
+    AppendMenuA(disc, MF_STRING, CMD_INSERT0, "Insert floppy in :0...");
+    AppendMenuA(disc, MF_STRING, CMD_INSERT1, "Insert floppy in :1...");
+    AppendMenuA(disc, MF_SEPARATOR, 0, NULL);
+    AppendMenuA(disc, MF_STRING, CMD_EJECT0, "Eject :0");
+    AppendMenuA(disc, MF_STRING, CMD_EJECT1, "Eject :1");
+    AppendMenuA(mach, MF_STRING, CMD_TURBO, "Turbo");
+    AppendMenuA(mach, MF_STRING, CMD_SOUND, "Sound");
+    AppendMenuA(mach, MF_SEPARATOR, 0, NULL);
+    AppendMenuA(mach, MF_STRING, CMD_RESET, "Reset\tCtrl+Break");
+    AppendMenuA(mach, MF_SEPARATOR, 0, NULL);
+    AppendMenuA(mach, MF_STRING, CMD_QUIT, "Quit");
+    AppendMenuA(mouse, MF_STRING, CMD_RIGHT_MENU, "Right button is Menu");
+    AppendMenuA(bar, MF_POPUP, (UINT_PTR)disc, "&Disc");
+    AppendMenuA(bar, MF_POPUP, (UINT_PTR)mach, "&Machine");
+    AppendMenuA(bar, MF_POPUP, (UINT_PTR)mouse, "M&ouse");
+    return bar;
+}
+
+static void menu_command(int id)
+{
+    switch (id) {
+    case CMD_INSERT0: choose_floppy(0); break;
+    case CMD_INSERT1: choose_floppy(1); break;
+    case CMD_EJECT0: case CMD_EJECT1: {
+        int d = id == CMD_EJECT1;
+        fdc_eject(&app.a.fdc, d);
+        app.floppy_name[d][0] = 0;
+        break;
+    }
+    case CMD_TURBO:
+        app.turbo = !app.turbo;
+        archie_set_mhz(&app.a, app.turbo ? TURBO_MHZ : app.mhz);
+        break;
+    case CMD_SOUND: audio.muted = !audio.muted; break;
+    case CMD_RESET: archie_reset(&app.a); break;
+    case CMD_RIGHT_MENU: app.right_menu = !app.right_menu; break;
+    case CMD_QUIT: DestroyWindow(app.hwnd); break;
+    default: break;
+    }
+}
+
 static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     switch (msg) {
+    case WM_COMMAND:
+        menu_command(LOWORD(wp));
+        return 0;
+    case WM_INITMENUPOPUP: {
+        HMENU m = (HMENU)wp;
+        CheckMenuItem(m, CMD_TURBO, app.turbo ? MF_CHECKED : MF_UNCHECKED);
+        CheckMenuItem(m, CMD_SOUND, audio.muted ? MF_UNCHECKED : MF_CHECKED);
+        CheckMenuItem(m, CMD_RIGHT_MENU, app.right_menu ? MF_CHECKED : MF_UNCHECKED);
+        EnableMenuItem(m, CMD_EJECT0, app.a.fdc.drive[0].image ? MF_ENABLED : MF_GRAYED);
+        EnableMenuItem(m, CMD_EJECT1, app.a.fdc.drive[1].image ? MF_ENABLED : MF_GRAYED);
+        return 0;
+    }
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
     case WM_KEYUP:
     case WM_SYSKEYUP: {
         int down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
         if (down && (lp & (1 << 30))) return 0;             /* ripetizione: la fa la macchina */
-        /* comandi dell'emulatore con Ctrl+Alt: Ctrl+F12, Ctrl+Shift+F12 e
-           gli altri Ctrl+F restano a RISC OS (task window, spegnimento...) */
-        int hot = GetKeyState(VK_CONTROL) < 0 && GetKeyState(VK_MENU) < 0;
-        if (wp == VK_F7 && hot) {
-            if (down) { app.right_menu = !app.right_menu; update_title(); }
-            return 0;
-        }
-        if (wp == VK_F9 && hot) {
-            if (down) choose_floppy(GetKeyState(VK_SHIFT) < 0 ? 1 : 0);
-            return 0;
-        }
-        if (wp == VK_F8 && hot) {
-            if (down) {
-                int d = GetKeyState(VK_SHIFT) < 0 ? 1 : 0;
-                fdc_eject(&app.a.fdc, d);
-                app.floppy_name[d][0] = 0;
-                update_title();
-            }
-            return 0;
-        }
-        if (wp == VK_F11 && hot) {
-            if (down) capture_mouse(0);
-            return 0;
-        }
-        if (wp == VK_F10 && hot) {
-            if (down) audio.muted = !audio.muted;
-            return 0;
-        }
-        if (wp == VK_F12 && hot) {
-            if (down) {
-                if (GetKeyState(VK_SHIFT) < 0) archie_reset(&app.a);
-                else {
-                    app.turbo = !app.turbo;
-                    archie_set_mhz(&app.a, app.turbo ? TURBO_MHZ : app.mhz);
-                }
-                update_title();
-            }
-            return 0;
+        /* Ctrl+Alt premuti e rilasciati senza altri tasti liberano il mouse
+           (come nelle macchine virtuali); gli altri comandi stanno nel menu */
+        if (down && (wp == VK_CONTROL || wp == VK_MENU))
+            app.free_armed = GetKeyState(VK_CONTROL) < 0 && GetKeyState(VK_MENU) < 0 ? 1 : app.free_armed;
+        else if (down)
+            app.free_armed = 0;
+        else if ((wp == VK_CONTROL || wp == VK_MENU) && app.free_armed) {
+            app.free_armed = 0;
+            capture_mouse(0);
         }
         keys_key(&keys, (int)wp, (int)((lp >> 24) & 1), down, 0, (uint32_t)GetMessageTime());
         return 0;                                              /* niente menu di sistema con Alt/F10 */
@@ -554,7 +580,7 @@ int main(int argc, char **argv)
     wc.lpszClassName = "ArchieWindow";
     RegisterClassA(&wc);
     app.hwnd = CreateWindowA(wc.lpszClassName, "Archimedes", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-                             1280, 1024, NULL, NULL, inst, NULL);
+                             1280, 1024, NULL, build_menu(), inst, NULL);
     DragAcceptFiles(app.hwnd, TRUE);
     fit_window();
     update_title();

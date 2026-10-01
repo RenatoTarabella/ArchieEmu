@@ -39,7 +39,7 @@ Machine menu, by dropping it on the window or by double-clicking it.
   Cmd+E / Cmd+Shift+E   eject :0 / :1
   Cmd+T                 turbo
   Cmd+Shift+M           sound on/off
-  Cmd+Esc               release the mouse (click in the window to capture it)
+  Ctrl+Option or Cmd+Esc  free the mouse (click in the window to capture it)
   Cmd+Shift+R           reset
 
 Mouse as on the Archimedes: left = Select, middle = Menu, right = Adjust. On a

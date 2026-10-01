@@ -25,17 +25,14 @@ original copy protection) can go in the "ADF" folder. Insert one
 with Ctrl+F9 or by dropping the file on the window, or from the command line:
   archie.exe --floppy game.adf --floppy2 disc2.adf
 
-Keys (Ctrl+Alt, so that Ctrl+F12 and Ctrl+Shift+F12 still reach RISC OS)
-  Ctrl+Alt+F9          choose a floppy image for drive 0 (with Shift: drive 1)
-  Ctrl+Alt+F8          eject
-  Ctrl+Alt+F10         sound on/off
-  Ctrl+Alt+F11         release the mouse (click in the window to capture it)
-  Ctrl+Alt+F12         turbo
-  Ctrl+Alt+Shift+F12   reset
-  Ctrl+Alt+F7          right button as Menu (mice without a middle button)
+Commands are in the window's menu bar: Disc (insert, eject), Machine (Turbo,
+Sound, Reset) and Mouse. No key is taken away from RISC OS.
+  Ctrl+Alt     pressed and released alone: free the mouse (click in the window
+               to capture it again)
+  Ctrl+Break   (Ctrl+Pause) reset, as on the Archimedes
 
-Mouse as on the Archimedes: left = Select, middle = Menu, right = Adjust.
-Start with --right-menu to make the right button Menu.
+Mouse as on the Archimedes: left = Select, middle = Menu, right = Adjust. For a
+mouse without a middle button: Mouse > Right button is Menu (or --right-menu).
 
 Desktop applications must be started by double-clicking them in the Filer:
 from the F12 command line they stop with "Wimp is currently active".

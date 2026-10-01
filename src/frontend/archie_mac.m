@@ -135,6 +135,7 @@ typedef struct App {
     double    img_w;
     int       captured;              /* mouse catturato: movimento relativo */
     int       right_menu;            /* tasto destro = Menu invece di Adjust */
+    int       free_armed;            /* Ctrl+Option premuti da soli */
     /* tastiera */
     uint32_t  dead;
     double    caps_release;          /* Caps Lock: rilascio ritardato */
@@ -167,11 +168,7 @@ static const char *base_name(const char *p)
 static void update_title(void)
 {
     char t[256];
-    snprintf(t, sizeof t, "Archimedes - %s   [%s, Cmd+T %s]%s%s%s%s",
-             app.rom_name, app.turbo ? "TURBO" : "ARM2 8 MHz", app.turbo ? "for 8 MHz" : "for turbo",
-             app.captured ? "   [mouse captured: Cmd+Esc to release]" : "   [click to capture the mouse]",
-             app.floppy_name[0][0] ? "   :0 " : "", app.floppy_name[0], app.floppy_name[1][0] ? "  :1 " : "");
-    if (app.floppy_name[1][0]) strncat(t, app.floppy_name[1], sizeof t - strlen(t) - 1);
+    snprintf(t, sizeof t, "Archimedes - %s%s", app.rom_name, app.captured ? "   (Ctrl+Option: free mouse)" : "");
     NSString *s = [NSString stringWithUTF8String:t];
     if (![window.title isEqualToString:s]) window.title = s;
 }
@@ -384,6 +381,7 @@ static void mouse_moved(NSEvent *e)
 - (void)keyDown:(NSEvent *)e
 {
     if (e.modifierFlags & NSEventModifierFlagCommand) return;   /* i comandi li gestisce il menu */
+    app.free_armed = 0;
     if (e.isARepeat) return;                                     /* la ripetizione la fa la macchina */
     int ext, vk = mac_key_to_vk(e.keyCode, &ext);
     if (vk < 0) return;
@@ -405,6 +403,10 @@ static void mouse_moved(NSEvent *e)
     unsigned short kc = e.keyCode;
     unsigned long f = e.modifierFlags;
     app.flags = f;
+    /* Ctrl+Option premuti e rilasciati da soli liberano il mouse */
+    int ctrl = (f & NSEventModifierFlagControl) != 0, opt = (f & NSEventModifierFlagOption) != 0;
+    if (ctrl && opt) app.free_armed = 1;
+    else if (app.free_armed && !(ctrl && opt)) { app.free_armed = 0; capture_mouse(0); }
     int ext, vk = mac_key_to_vk(kc, &ext);
     if (vk < 0) return;                                          /* Command, fn */
     if (vk == 0x14) {

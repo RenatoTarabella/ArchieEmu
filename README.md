@@ -187,22 +187,17 @@ types on the emulated keyboard.
   current one executes, so code that rewrites them does not see the change
   (Elite's copy protection relies on this).
 
-`archie.exe` shortcuts:
+The emulator's commands are in the window's menu bar, on Windows as on the Mac:
+**Disc** (insert in :0/:1, eject), **Machine** (Turbo, Sound, Reset, Quit) and
+**Mouse** (right button as Menu, for mice without a middle button; also
+`--right-menu`). No key is taken away from RISC OS: Ctrl+F12 (task window) and
+Ctrl+Shift+F12 (shutdown) work as on the real machine, and **Ctrl+Break**
+(Ctrl+Pause on a PC keyboard) resets it, as on the Archimedes.
 
-| Keys | Action |
-|---|---|
-| Ctrl+Alt+F9 | choose a floppy image (with Shift: drive 1) |
-| Ctrl+Alt+F8 | eject |
-| Ctrl+Alt+F10 | sound on/off |
-| Ctrl+Alt+F11 | release the mouse (click in the window to capture it) |
-| Ctrl+Alt+F12 | turbo |
-| Ctrl+Alt+Shift+F12 | reset |
-| Ctrl+Alt+F7 | right button as Menu (for mice without a middle button) |
-
-The emulator's own shortcuts use Ctrl+Alt so that Ctrl+F12 (task window) and
-Ctrl+Shift+F12 (shutdown) reach RISC OS. The mouse is the Archimedes one: left
-Select, middle Menu, right Adjust (`--right-menu` makes the right button Menu).
-On the Mac the same commands are in the Machine menu (Cmd shortcuts).
+A click in the window captures the mouse (games such as Zarch read only its
+movement); **Ctrl+Alt** pressed and released on their own (Ctrl+Option on the
+Mac) free it again, so the menu bar can be reached. The mouse is the Archimedes
+one: left Select, middle Menu, right Adjust.
 
 Dropping an `.adf` file on the window also inserts it. Besides `.adf`/`.adl`
 images the drives accept **`.hfe`** (HxC) flux images: they keep the original

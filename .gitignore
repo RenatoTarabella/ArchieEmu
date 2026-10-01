@@ -8,3 +8,5 @@ build.log
 .venv/
 __pycache__/
 *.pyc
+/build-dist/
+/dist/

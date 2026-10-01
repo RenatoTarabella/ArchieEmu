@@ -13,12 +13,18 @@ through interfaces. It runs in two flavours:
 
 ## Download
 
-Portable Windows 64-bit builds, just unzip and run (no installation):
+**Windows** (64-bit), portable builds, just unzip and run (no installation):
 
 - [**ArchieEmu-BASIC-v1.0-win64.zip**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.0/ArchieEmu-BASIC-v1.0-win64.zip):
   the BBC BASIC V machine, ready to use.
 - [**ArchieEmu-Archimedes-v1.0-win64.zip**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.0/ArchieEmu-Archimedes-v1.0-win64.zip):
   the Archimedes; you need your own RISC OS 3.11 ROM (not included).
+
+**macOS** (Apple Silicon and Intel, macOS 11 or later), signed and notarized:
+
+- [**ArchieEmu-1.0-macOS.dmg**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.0/ArchieEmu-1.0-macOS.dmg):
+  both machines as native apps. The Archimedes asks for your RISC OS 3.11 ROM on
+  first run and keeps it in `Documents/ArchieEmu/roms`.
 
 All releases: [Releases page](https://github.com/RenatoTarabella/ArchieEmu/releases).
 
@@ -65,6 +71,20 @@ and `-c` (cycle limit).
 
 The `.venv` environment contains Unicorn, Keystone and Capstone. Recreate it with
 `python -m venv .venv` followed by `.venv\Scripts\pip install unicorn keystone-engine capstone`.
+
+### macOS
+
+The core is portable C99; the two windows have native Cocoa front ends
+(`src/frontend/armwin_mac.m`, `archie_mac.m`, with the Mac keyboard mapped onto the
+same translation as Windows in `mac_keys.c`). With the Xcode command line tools and CMake:
+
+```
+cmake -S . -B build-mac -DCMAKE_BUILD_TYPE=Release "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+cmake --build build-mac
+```
+
+This builds `ArchieEmu BASIC.app` and `ArchieEmu Archimedes.app`, plus the
+command-line tools and tests. `tools/make_dmg.sh` signs, packages and notarizes the DMG.
 
 ## Verification
 

@@ -10,3 +10,4 @@ __pycache__/
 *.pyc
 /build-dist/
 /dist/
+/build-mac/

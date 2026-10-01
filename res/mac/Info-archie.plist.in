@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>                  <string>Archimedes</string>
+    <key>CFBundleDisplayName</key>           <string>ArchieEmu Archimedes</string>
+    <key>CFBundleIdentifier</key>            <string>com.renatotarabella.archieemu.archimedes</string>
+    <key>CFBundleVersion</key>               <string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
+    <key>CFBundleShortVersionString</key>    <string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
+    <key>CFBundleExecutable</key>            <string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+    <key>CFBundleIconFile</key>              <string>armwin</string>
+    <key>CFBundlePackageType</key>           <string>APPL</string>
+    <key>LSMinimumSystemVersion</key>        <string>11.0</string>
+    <key>NSHighResolutionCapable</key>       <true/>
+    <key>LSApplicationCategoryType</key>     <string>public.app-category.games</string>
+    <key>NSHumanReadableCopyright</key>      <string>Copyright (c) 2026 Renato Tarabella. MIT licence.</string>
+    <!-- le immagini ADFS si aprono con un doppio clic o trascinandole sull'icona -->
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>         <string>ADFS floppy disc image</string>
+            <key>CFBundleTypeRole</key>         <string>Viewer</string>
+            <key>LSHandlerRank</key>            <string>Alternate</string>
+            <key>CFBundleTypeExtensions</key>
+            <array><string>adf</string><string>adl</string></array>
+        </dict>
+    </array>
+</dict>
+</plist>

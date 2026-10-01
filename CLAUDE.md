@@ -23,7 +23,7 @@ lessons learned that are not obvious from the code.
 
 ## Build and test
 
-Windows only, no gcc: MSVC 2022 through CMake.
+Windows: MSVC 2022 through CMake (no gcc). macOS: see below.
 
 ```
 cmake --build build --config Release
@@ -32,6 +32,22 @@ build\Release\test_arm2.exe   (also test_basic, test_memc, test_vidc, test_kbd, 
 ```
 
 The linker fails if `archie.exe` / `armwin.exe` is still running: close it first.
+
+Release packages: `tools/make_dist.ps1` (Windows portable zips, static CRT) and
+`tools/make_dmg.sh` (macOS DMG, run on the Mac).
+
+### macOS
+
+Native Cocoa front ends (`armwin_mac.m`, `archie_mac.m`, `mac_keys.c`), built on
+the Mac mini over SSH (`renatos-mini.fritz.box`, key in `~/.ssh/config`; cmake is
+in `/opt/homebrew/bin`). Copy the tree with `tar` over `ssh` to `~/ArchieEmu`.
+
+- GUI apps can only be launched from SSH (`open ...app`) while the user is logged
+  in on the Mac's desktop (`stat -f%Su /dev/console` must not be `root`), and
+  `screencapture` from SSH only sees the wallpaper: ask the user for a screenshot.
+- `make_dmg.sh` signs with the Developer ID and notarizes with the `runebrace`
+  notarytool profile; the keychain is unlocked from `~/.rb-keychain`, as for Runebrace.
+- `[NSApp run]` never returns: cleanup (CMOS save) lives in `applicationWillTerminate`.
 
 **Test from the command line before handing anything over**; don't make the user
 type long test lines. The tools for that:

@@ -105,6 +105,36 @@ if(WIN32)
     endif()
 endif()
 
+# Le due finestre per macOS (Cocoa): bundle .app con icona e risorse
+if(APPLE)
+    enable_language(OBJC)
+    set(MAC_ICON ${CMAKE_SOURCE_DIR}/res/armwin.icns)
+    set_source_files_properties(${MAC_ICON} third_party/riscos/BASIC third_party/riscos/LICENSE
+                                PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    file(GLOB MAC_DISC ${CMAKE_SOURCE_DIR}/disc/*)
+    set_source_files_properties(${MAC_DISC} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/disc)
+
+    add_executable(armwin MACOSX_BUNDLE src/frontend/armwin_mac.m src/frontend/mac_keys.c
+                   ${MAC_ICON} third_party/riscos/BASIC third_party/riscos/LICENSE ${MAC_DISC})
+    target_include_directories(armwin PRIVATE src/frontend)
+    target_link_libraries(armwin armcore "-framework Cocoa" "-framework Carbon")
+    set_target_properties(armwin PROPERTIES OUTPUT_NAME "ArchieEmu BASIC"
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/res/mac/Info-basic.plist.in)
+
+    add_executable(archie MACOSX_BUNDLE src/frontend/archie_mac.m src/frontend/archie_keys.c
+                   src/frontend/mac_keys.c ${MAC_ICON})
+    target_include_directories(archie PRIVATE src/frontend)
+    target_link_libraries(archie archiecore "-framework Cocoa" "-framework Carbon" "-framework AudioToolbox")
+    set_target_properties(archie PROPERTIES OUTPUT_NAME "ArchieEmu Archimedes"
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/res/mac/Info-archie.plist.in)
+
+    foreach(t armwin archie)
+        target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:OBJC>:-fobjc-arc>)
+        set_target_properties(${t} PROPERTIES
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0" MACOSX_BUNDLE_BUNDLE_VERSION "1.0")
+    endforeach()
+endif()
+
 # Collaudo della tastiera con la disposizione spagnola di Windows
 if(WIN32)
     add_executable(test_keys_es tests/test_keys_es.c src/frontend/archie_keys.c)

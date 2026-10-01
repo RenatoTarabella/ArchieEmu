@@ -134,7 +134,7 @@ if(APPLE)
     foreach(t armwin archie)
         target_compile_options(${t} PRIVATE $<$<COMPILE_LANGUAGE:OBJC>:-fobjc-arc>)
         set_target_properties(${t} PROPERTIES
-            MACOSX_BUNDLE_SHORT_VERSION_STRING "1.1" MACOSX_BUNDLE_BUNDLE_VERSION "1.1")
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "1.1.1" MACOSX_BUNDLE_BUNDLE_VERSION "1.1.1")
     endforeach()
 endif()
 

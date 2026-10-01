@@ -15,14 +15,14 @@ through interfaces. It runs in two flavours:
 
 **Windows** (64-bit), portable builds, just unzip and run (no installation):
 
-- [**ArchieEmu-BASIC-v1.1-win64.zip**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.1/ArchieEmu-BASIC-v1.1-win64.zip):
+- [**ArchieEmu-BASIC-v1.1.1-win64.zip**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.1.1/ArchieEmu-BASIC-v1.1.1-win64.zip):
   the BBC BASIC V machine, ready to use.
-- [**ArchieEmu-Archimedes-v1.1-win64.zip**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.1/ArchieEmu-Archimedes-v1.1-win64.zip):
+- [**ArchieEmu-Archimedes-v1.1.1-win64.zip**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.1.1/ArchieEmu-Archimedes-v1.1.1-win64.zip):
   the Archimedes; you need your own RISC OS 3.11 ROM (not included).
 
 **macOS** (Apple Silicon and Intel, macOS 11 or later), signed and notarized:
 
-- [**ArchieEmu-1.1-macOS.dmg**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.1/ArchieEmu-1.1-macOS.dmg):
+- [**ArchieEmu-1.1.1-macOS.dmg**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.1.1/ArchieEmu-1.1.1-macOS.dmg):
   both machines as native apps. The Archimedes asks for your RISC OS 3.11 ROM on
   first run and keeps it in `Documents/ArchieEmu/roms`.
 

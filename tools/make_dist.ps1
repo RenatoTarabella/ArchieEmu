@@ -1,7 +1,7 @@
 # Crea i due pacchetti portable (macchina BASIC e Archimedes) in dist\
 # Compila con il runtime C statico, cosi' non serve il Visual C++ Redistributable.
-# Uso: powershell -File tools\make_dist.ps1 [-Version v1.1]
-param([string]$Version = "v1.1")
+# Uso: powershell -File tools\make_dist.ps1 [-Version v1.1.1]
+param([string]$Version = "v1.1.1")
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root

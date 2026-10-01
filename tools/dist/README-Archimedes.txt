@@ -29,9 +29,6 @@ from the F12 command line they stop with "Wimp is currently active".
 
 Tested: Zarch, Pacmania, Elite, Genesis Professional 3.04.
 
-archie_boot.exe is a headless version for diagnostics (POST report, screenshots
-with --png, typing with --keys). See the documentation on GitHub.
-
 Source code, documentation and bug reports:
   https://github.com/RenatoTarabella/ArchieEmu
 

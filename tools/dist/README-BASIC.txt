@@ -3,10 +3,7 @@ ArchieEmu - BBC BASIC V machine (portable, Windows 64-bit)
 
 The original BBC BASIC V 1.87 module running on an emulated 8 MHz ARM2, with
 RISC OS calls handled by the emulator. No installation and no ROM needed:
-unzip anywhere and run.
-
-  armwin.exe     BBC BASIC in a window
-  armbasic.exe   the same machine in a console (reads lines as if typed)
+unzip anywhere and run armwin.exe.
 
 Try the demos in the "disc" folder:  CHAIN "Ray"   CHAIN "mandel"
 CHAIN "Harmonograph"

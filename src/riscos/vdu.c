@@ -242,7 +242,7 @@ static int apply_mode(Vdu *v, int w, int h, int log2bpp)
     v->height = h;
     v->log2bpp = log2bpp;
     v->line_bytes = (w << log2bpp) / 8;
-    v->xeig = w <= 400 ? 2 : 1;
+    v->xeig = w <= 200 ? 3 : w <= 400 ? 2 : 1;           /* 1280 unita' OS di larghezza */
     v->yeig = h <= 300 ? 2 : 1;
     v->ncolour = log2bpp == 5 ? 0xFFFFFFFFu : log2bpp == 4 ? 65535u : (1u << (1 << log2bpp)) - 1;
     if (log2bpp == 3) v->ncolour = 255;

@@ -15,6 +15,7 @@ add_library(armcore STATIC
     src/cpu/arm2.c
     src/cpu/arm2_disasm.c
     src/core/bus.c
+    src/core/hostdir.c
     src/hle/riscos_swi.c
     src/riscos/module.c
     src/riscos/kernel.c
@@ -73,6 +74,8 @@ add_library(archiecore STATIC
     src/archie/cmos.c
     src/archie/fdc.c
     src/archie/archie.c
+    src/archie/podule.c
+    src/archie/hostfs.c
 )
 target_include_directories(archiecore PUBLIC src src/archie)
 target_link_libraries(archiecore armcore)

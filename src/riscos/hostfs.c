@@ -9,30 +9,20 @@
  *     file e' di tipo Text (&FFF).
  */
 #include "kernel_priv.h"
+#include "core/hostdir.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 #include <time.h>
 #include <sys/stat.h>
-#ifdef _WIN32
-#include <io.h>
-#include <direct.h>
-#define strcasecmp _stricmp
-#define strncasecmp _strnicmp
-#define mkdir_host(p) _mkdir(p)
-#define rmdir _rmdir
-#else
-#include <dirent.h>
-#include <strings.h>
-#include <unistd.h>
-#define mkdir_host(p) mkdir(p, 0777)
-#endif
 
-#define TYPE_TEXT  0xFFFu
+#define TYPE_TEXT  HOSTDIR_TYPE_TEXT
 #define ERR_NOT_FOUND 0x108D6u
+#define OBJ_NONE HOSTOBJ_NONE
+#define OBJ_FILE HOSTOBJ_FILE
+#define OBJ_DIR  HOSTOBJ_DIR
 
-enum { OBJ_NONE = 0, OBJ_FILE = 1, OBJ_DIR = 2 };
+typedef HostObject Object;
 
 /* ------------------------------------------------------------------ */
 /* nomi                                                               */
@@ -49,127 +39,21 @@ static int map_name(RiscosKernel *k, const char *ro, char *out, size_t size)
     if (dollar) p = dollar + 2;
     else if (!strcmp(p, "$") || !strcmp(p, "@")) p = "";
     else if (!strncmp(p, "@.", 2)) p += 2;
-
-    char rel[256];
-    size_t n = 0;
-    for (; *p && *p > ' ' && n < sizeof rel - 1; p++) {
-        char c = *p;
-        if (c == '^' || c == '\\' || c == '"' || c == '*' || c == '?' || c == '<' || c == '>' || c == '|')
-            return 0;
-        rel[n++] = c == '.' ? '/' : c == '/' ? '.' : c;
-    }
-    rel[n] = 0;
-    if (strstr(rel, "..")) return 0;
-    if (!k->disc_dir[0]) return 0;
-    snprintf(out, size, n ? "%s/%s" : "%s", k->disc_dir, rel);
-    return 1;
+    return hostdir_map(k->disc_dir, p, out, size);
 }
 
-static const char *leaf_of(const char *path)
-{
-    const char *s = strrchr(path, '/');
-    const char *b = strrchr(path, '\\');
-    if (b && (!s || b > s)) s = b;
-    return s ? s + 1 : path;
-}
-
-/* "nome,ffb" -> tipo; -1 se non c'e' un suffisso valido */
-static int suffix_type(const char *name)
-{
-    const char *c = strrchr(name, ',');
-    if (!c || strlen(c) != 4) return -1;
-    int t = 0;
-    for (int i = 1; i < 4; i++) {
-        if (!isxdigit((unsigned char)c[i])) return -1;
-        t = t * 16 + (isdigit((unsigned char)c[i]) ? c[i] - '0' : toupper((unsigned char)c[i]) - 'A' + 10);
-    }
-    return t;
-}
-
-/* scorre le voci di una cartella; cb ritorna 1 per fermarsi */
-typedef int (*DirCallback)(const char *name, void *ctx);
-
-static void list_dir(const char *dir, DirCallback cb, void *ctx)
-{
-#ifdef _WIN32
-    char pattern[600];
-    snprintf(pattern, sizeof pattern, "%s/*", dir);
-    struct _finddata_t fd;
-    intptr_t h = _findfirst(pattern, &fd);
-    if (h == -1) return;
-    do {
-        if (strcmp(fd.name, ".") && strcmp(fd.name, "..") && cb(fd.name, ctx)) break;
-    } while (_findnext(h, &fd) == 0);
-    _findclose(h);
-#else
-    DIR *d = opendir(dir);
-    if (!d) return;
-    struct dirent *e;
-    while ((e = readdir(d)))
-        if (strcmp(e->d_name, ".") && strcmp(e->d_name, "..") && cb(e->d_name, ctx)) break;
-    closedir(d);
-#endif
-}
-
-typedef struct FindCtx { const char *leaf; char found[256]; } FindCtx;
-
-static int find_suffixed(const char *name, void *vctx)
-{
-    FindCtx *f = vctx;
-    size_t n = strlen(f->leaf);
-    if (!strncasecmp(name, f->leaf, n) && name[n] == ',' && suffix_type(name) >= 0) {
-        snprintf(f->found, sizeof f->found, "%s", name);
-        return 1;
-    }
-    return 0;
-}
-
-typedef struct Object {
-    int      kind;                 /* OBJ_NONE, OBJ_FILE, OBJ_DIR */
-    char     path[600];            /* percorso reale sull'host */
-    uint32_t type;                 /* tipo RISC OS */
-    uint32_t length;
-    uint64_t date_cs;              /* centesimi dal 1900 */
-} Object;
-
-static int stat_object(Object *o)
-{
-    struct stat st;
-    if (stat(o->path, &st) != 0) return 0;
-    o->kind = (st.st_mode & S_IFDIR) ? OBJ_DIR : OBJ_FILE;
-    o->length = (uint32_t)st.st_size;
-    o->date_cs = ((uint64_t)st.st_mtime + 2208988800ull) * 100;
-    int t = suffix_type(leaf_of(o->path));
-    o->type = o->kind == OBJ_DIR ? 0x1000 : t >= 0 ? (uint32_t)t : TYPE_TEXT;
-    return 1;
-}
-
-/* trova l'oggetto: nome esatto oppure "nome,xxx" */
 static int find_object(RiscosKernel *k, const char *ro, Object *o)
 {
-    memset(o, 0, sizeof *o);
     char base[600];
-    if (!map_name(k, ro, base, sizeof base)) return 0;
-    snprintf(o->path, sizeof o->path, "%s", base);
-    if (stat_object(o)) return 1;
-
-    char dir[600];
-    snprintf(dir, sizeof dir, "%s", base);
-    char *slash = strrchr(dir, '/');
-    if (!slash) return 0;
-    *slash = 0;
-    FindCtx f = { slash + 1, "" };
-    list_dir(dir, find_suffixed, &f);
-    if (!f.found[0]) return 0;
-    snprintf(o->path, sizeof o->path, "%s/%s", dir, f.found);
-    return stat_object(o);
+    memset(o, 0, sizeof *o);
+    return map_name(k, ro, base, sizeof base) && hostdir_find(base, o);
 }
 
-static void load_exec(const Object *o, uint32_t *load, uint32_t *exec)
-{
-    *load = 0xFFF00000u | (o->type & 0xFFF) << 8 | (uint32_t)(o->date_cs >> 32);
-    *exec = (uint32_t)o->date_cs;
-}
+#define stat_object hostdir_stat
+#define load_exec   hostdir_load_exec
+#define list_dir    hostdir_list
+#define mkdir_host  hostdir_mkdir
+#define rmdir(p)    (hostdir_rmdir(p) ? 0 : -1)
 
 static void not_found(RiscosKernel *k, uint32_t swi, const char *name)
 {
@@ -181,12 +65,9 @@ static void not_found(RiscosKernel *k, uint32_t swi, const char *name)
 /* percorso per un file nuovo di tipo 'type', togliendo le versioni con altri suffissi */
 static void new_file_path(RiscosKernel *k, const char *ro, uint32_t type, char *out, size_t size)
 {
-    Object old;
-    if (find_object(k, ro, &old) && old.kind == OBJ_FILE) remove(old.path);
     char base[600];
     map_name(k, ro, base, sizeof base);
-    if (type == TYPE_TEXT) snprintf(out, size, "%s", base);
-    else snprintf(out, size, "%s,%03x", base, type & 0xFFF);
+    hostdir_new_file(base, type, out, size);
 }
 
 /* ------------------------------------------------------------------ */
@@ -479,12 +360,7 @@ static int cat_entry(const char *name, void *vctx)
     snprintf(o.path, sizeof o.path, "%s/%s", c->dir, name);
     if (!stat_object(&o)) return 0;
     char ro[256];
-    size_t n = 0;
-    for (const char *p = name; *p && n < sizeof ro - 1; p++) {
-        if (*p == ',' && suffix_type(p) >= 0) break;
-        ro[n++] = *p == '.' ? '/' : *p;
-    }
-    ro[n] = 0;
+    hostdir_ro_name(name, ro, sizeof ro);
     char line[160];
     if (c->verbose) {
         const char *tn = type_name(o.type);

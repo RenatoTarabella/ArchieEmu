@@ -4,7 +4,7 @@
  * e' stata la CPU e salva lo schermo in PNG.
  *
  *   archie_boot --rom ROM311 [--ms 3000] [--png schermo.png] [--floppy disco.adf] [--floppy2 disco.adf]
- *               [--ram 4] [--keys "testo"] [--trace-vectors] [--hist]
+ *               [--ram 4] [--keys "testo"] [--trace-vectors] [--hist] [--hostfs cartella]
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -200,6 +200,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--floppy2") && i + 1 < argc) cfg.floppy[1] = argv[++i];
         else if (!strcmp(argv[i], "--ram") && i + 1 < argc) cfg.ram_mb = (uint32_t)atoi(argv[++i]);
         else if (!strcmp(argv[i], "--cmos") && i + 1 < argc) cfg.cmos_path = argv[++i];
+        else if (!strcmp(argv[i], "--hostfs") && i + 1 < argc) cfg.hostfs_dir = argv[++i];
         else if (!strcmp(argv[i], "--trace-vectors")) trace_vectors = 1;
         else if (!strcmp(argv[i], "--hist")) hist = 1;
         else if (!strcmp(argv[i], "--trace-abort")) trace_abort = 1;

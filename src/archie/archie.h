@@ -26,6 +26,7 @@ typedef struct ArchieConfig {
     const char *cmos_path;       /* dove leggere/salvare la CMOS (NULL = predefinita) */
     const char *floppy[2];       /* immagini .adf nelle unita' 0 e 1 (NULL = vuote) */
     double      mhz;             /* clock della CPU (8 = ARM2) */
+    const char *hostfs_dir;      /* cartella dell'host vista come HostFS (NULL = niente scheda) */
 } ArchieConfig;
 
 typedef struct Archie {
@@ -65,6 +66,11 @@ typedef struct Archie {
 
     uint8_t  latch_a, latch_b;
     int      sda_in;
+
+    /* scheda di espansione 0: ROM con il modulo HostFS (vuota se hostfs_dir manca) */
+    uint8_t *podule_rom;
+    uint32_t podule_size;
+    struct ArcHostFS *hostfs;
 
     /* facoltativo, per il debug: scrittura del latch A (il POST di
        RISC OS 3 ci manda il suo rapporto in seriale sul bit 0) */

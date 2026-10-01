@@ -12,7 +12,8 @@
  *
  * La ROM si cerca accanto all'applicazione (roms/1. Major/ROM311) e in
  * ~/Documents/ArchieEmu/roms/ROM311; se manca la si sceglie con una finestra
- * e viene copiata li'. La CMOS si salva accanto alla ROM.
+ * e viene copiata li'. La CMOS si salva accanto alla ROM. La cartella
+ * ~/Documents/ArchieEmu/HostFS (o --hostfs) e' il disco HostFS di RISC OS.
  */
 #import <Cocoa/Cocoa.h>
 #import <AudioToolbox/AudioToolbox.h>
@@ -609,6 +610,7 @@ int main(int argc, char **argv)
             else if (!strcmp(argv[i], "--ram") && i + 1 < argc) cfg.ram_mb = (uint32_t)atoi(argv[++i]);
             else if (!strcmp(argv[i], "--mhz") && i + 1 < argc) app.mhz = atof(argv[++i]);
             else if (!strcmp(argv[i], "--cmos") && i + 1 < argc) cfg.cmos_path = argv[++i];
+            else if (!strcmp(argv[i], "--hostfs") && i + 1 < argc) cfg.hostfs_dir = argv[++i];
             else if (argv[i][0] != '-' && !cfg.floppy[0]) cfg.floppy[0] = argv[i];
         }
         if (app.mhz <= 0) app.mhz = 8;
@@ -635,6 +637,15 @@ int main(int argc, char **argv)
         BOOL isdir = NO;
         if (![NSFileManager.defaultManager fileExistsAtPath:adf isDirectory:&isdir] || !isdir) adf = user_folder(@"ADF");
         snprintf(adf_dir, sizeof adf_dir, "%s", adf.fileSystemRepresentation);
+
+        /* il disco HostFS: accanto all'app se c'e' una cartella HostFS, altrimenti in Documents */
+        static char hostfs_buf[PATH_MAX];
+        if (!cfg.hostfs_dir) {
+            NSString *hfs = [app_folder() stringByAppendingPathComponent:@"HostFS"];
+            if (![NSFileManager.defaultManager fileExistsAtPath:hfs isDirectory:&isdir] || !isdir) hfs = user_folder(@"HostFS");
+            snprintf(hostfs_buf, sizeof hostfs_buf, "%s", hfs.fileSystemRepresentation);
+            cfg.hostfs_dir = hostfs_buf;
+        }
 
         char err[300];
         if (!archie_create(&app.a, &cfg, err, sizeof err)) {

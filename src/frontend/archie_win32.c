@@ -2,7 +2,10 @@
  * archie_win32.c - Finestra della macchina Archimedes (Win32/GDI).
  *
  *   archie [--rom file] [--floppy disco.adf] [--floppy2 disco.adf]
- *          [--ram MB] [--mhz N] [--cmos file]
+ *          [--ram MB] [--mhz N] [--cmos file] [--hostfs cartella]
+ *
+ * HostFS: la cartella "HostFS" accanto all'eseguibile (creata se manca)
+ * compare in RISC OS come disco, con l'icona sulla barra.
  *
  * Tastiera: lettere, cifre, frecce, tasti funzione e modificatori vanno per
  * posizione (come servono ai giochi). I simboli invece seguono il carattere
@@ -467,6 +470,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--ram") && i + 1 < argc) cfg.ram_mb = (uint32_t)atoi(argv[++i]);
         else if (!strcmp(argv[i], "--mhz") && i + 1 < argc) app.mhz = atof(argv[++i]);
         else if (!strcmp(argv[i], "--cmos") && i + 1 < argc) cfg.cmos_path = argv[++i];
+        else if (!strcmp(argv[i], "--hostfs") && i + 1 < argc) cfg.hostfs_dir = argv[++i];
         else if (argv[i][0] != '-' && !cfg.floppy[0]) cfg.floppy[0] = argv[i];   /* file aperto con l'eseguibile */
     }
     if (app.mhz <= 0) app.mhz = 8;
@@ -486,6 +490,21 @@ int main(int argc, char **argv)
         /* la CMOS si salva accanto alla ROM, una per ogni versione */
         snprintf(cmos_buf, sizeof cmos_buf, "%s.cmos", cfg.rom_path);
         cfg.cmos_path = cmos_buf;
+    }
+    static char hostfs_buf[MAX_PATH];
+    if (!cfg.hostfs_dir) {
+        /* la cartella HostFS: quella del progetto o accanto all'eseguibile */
+        static const char *dirs[] = { "HostFS", "..\\HostFS", "..\\..\\HostFS", "..\\..\\..\\HostFS" };
+        cfg.hostfs_dir = find_file(dirs, sizeof dirs / sizeof dirs[0], hostfs_buf, sizeof hostfs_buf);
+        if (!cfg.hostfs_dir) {
+            DWORD n = GetModuleFileNameA(NULL, hostfs_buf, MAX_PATH);
+            char *slash = n ? strrchr(hostfs_buf, '\\') : NULL;
+            if (slash) {
+                strcpy(slash + 1, "HostFS");
+                CreateDirectoryA(hostfs_buf, NULL);
+                cfg.hostfs_dir = hostfs_buf;
+            }
+        }
     }
     snprintf(app.rom_name, sizeof app.rom_name, "%s", base_name(cfg.rom_path));
     if (!strcmp(app.rom_name, "ROM311")) snprintf(app.rom_name, sizeof app.rom_name, "RISC OS 3.11");

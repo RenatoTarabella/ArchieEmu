@@ -4,11 +4,15 @@
  * Periferiche nell'area dell'IOC (&3200000 + banco << 16):
  *   banco 0  registri dell'IOC
  *   banco 1  WD1772 (&3310000)
+ *   banco 4  schede di espansione (&33C0000): la 0 porta il modulo HostFS
  *   banco 5  latch del floppy e della stampante (&3350000):
  *            +&18 latch B, +&40 latch A, +&50 IOEB (assente)
- *   gli altri banchi (Econet, seriale, podule) sono vuoti.
+ *   gli altri banchi (Econet, seriale) sono vuoti.
  */
 #include "archie.h"
+#include "podule.h"
+#include "hostfs.h"
+#include "hostfs_module.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -130,6 +134,7 @@ static uint32_t io_read(void *ctx, uint32_t addr, int is_byte)
         fdc_update(&a->fdc, now);
         v = fdc_read(&a->fdc, (int)((off >> 2) & 3), now);
         break;
+    case 4: v = podule_read(a->podule_rom, a->podule_size, off); break;
     case 5:
         switch (off & 0xFC) {
         case 0x18: case 0x40: case 0x50: v = 0; break;
@@ -317,8 +322,19 @@ static uint8_t *load_file(const char *path, uint32_t *size)
     return d;
 }
 
+/* le SWI riservate del modulo HostFS: il lavoro lo fa l'host */
+static int archie_swi(Arm2 *cpu, uint32_t comment, void *user)
+{
+    Archie *a = user;
+    uint32_t n = comment & ~0x20000u;                 /* senza il bit X */
+    if (!a->hostfs || n < ARC_HOSTFS_SWI || n >= ARC_HOSTFS_SWI + 8) return 0;
+    arc_hostfs_entry(a->hostfs, cpu, (int)(n - ARC_HOSTFS_SWI));
+    return 1;
+}
+
 void archie_reset(Archie *a)
 {
+    if (a->hostfs) arc_hostfs_close_all(a->hostfs);
     memc_reset(&a->memc);
     ioc_reset(&a->ioc, a->now);
     vidc_reset(&a->vidc);
@@ -376,6 +392,20 @@ int archie_create(Archie *a, const ArchieConfig *cfg, char *err, size_t errsize)
             return 0;
         }
     }
+    if (cfg->hostfs_dir && cfg->hostfs_dir[0]) {
+        /* scheda 0 con il modulo HostFS: RISC OS lo carica all'avvio */
+        a->podule_size = PODULE_WINDOW;
+        a->podule_rom = malloc(a->podule_size);
+        a->hostfs = malloc(sizeof *a->hostfs);
+        if (!a->podule_rom || !a->hostfs ||
+            !podule_build(a->podule_rom, a->podule_size, hostfs_module, sizeof hostfs_module, "ArchieEmu HostFS")) {
+            snprintf(err, errsize, "impossibile preparare la scheda HostFS");
+            return 0;
+        }
+        arc_hostfs_init(a->hostfs, cfg->hostfs_dir, &a->memc);
+        a->cpu.swi_hook = archie_swi;
+        a->cpu.swi_user = a;
+    }
     a->mhz = cfg->mhz > 0 ? cfg->mhz : 8;
     archie_set_faithful(a, 1);
     archie_reset(a);
@@ -386,6 +416,9 @@ void archie_destroy(Archie *a)
 {
     if (a->cmos_path[0] && a->cmos.dirty) cmos_save(&a->cmos, a->cmos_path);
     for (int d = 0; d < FDC_DRIVES; d++) fdc_eject(&a->fdc, d);
+    if (a->hostfs) arc_hostfs_close_all(a->hostfs);
+    free(a->hostfs);
+    free(a->podule_rom);
     free(a->ram);
     free(a->rom);
     free(a->audio);

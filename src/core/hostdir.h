@@ -18,6 +18,7 @@
 
 #define HOSTDIR_TYPE_TEXT 0xFFFu
 #define HOSTDIR_TYPE_DIR  0x1000u
+#define HOSTDIR_MAX_NAME  40      /* nomi piu' lunghi accorciati per il Filer di RISC OS 3.11 */
 
 enum { HOSTOBJ_NONE = 0, HOSTOBJ_FILE = 1, HOSTOBJ_DIR = 2 };
 

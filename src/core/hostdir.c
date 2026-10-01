@@ -97,6 +97,14 @@ void hostdir_ro_name(const char *leaf, char *out, size_t size)
         out[n++] = c == '.' ? '/' : c == ' ' ? HARD_SPACE : c;
     }
     out[n] = 0;
+    /* Il Filer di RISC OS 3.11 si rovina con nomi oltre ~60 caratteri (spariscono
+       tutte le icone della finestra): i nomi lunghi si accorciano a 40 con un
+       codice dal nome intero, "inizio~3F2", che hostdir_find sa ritrovare */
+    if (n > HOSTDIR_MAX_NAME && size > HOSTDIR_MAX_NAME) {
+        uint32_t h = 2166136261u;
+        for (size_t i = 0; i < n; i++) h = (h ^ (uint8_t)out[i]) * 16777619u;
+        snprintf(out + HOSTDIR_MAX_NAME - 4, 5, "~%03X", h & 0xFFF);
+    }
 }
 
 void hostdir_list(const char *dir, HostDirCallback cb, void *ctx)
@@ -172,6 +180,18 @@ static int find_match(const char *name, void *vctx)
     return 0;
 }
 
+/* nome accorciato (vedi hostdir_ro_name): si confronta con le voci accorciate */
+static int find_short(const char *name, void *vctx)
+{
+    FindCtx *f = vctx;
+    char a[300], b[300];
+    hostdir_ro_name(name, a, sizeof a);
+    hostdir_ro_name(f->leaf, b, sizeof b);
+    if (strcasecmp(a, b)) return 0;
+    snprintf(f->found, sizeof f->found, "%s", name);
+    return 1;
+}
+
 int hostdir_find(const char *base, HostObject *o)
 {
     memset(o, 0, sizeof *o);
@@ -186,6 +206,7 @@ int hostdir_find(const char *base, HostObject *o)
     FindCtx f = { slash + 1, 0, "" };
     hostdir_list(dir, find_match, &f);
     if (!f.found[0]) { f.any_case = 1; hostdir_list(dir, find_match, &f); }
+    if (!f.found[0] && strchr(f.leaf, '~')) hostdir_list(dir, find_short, &f);
     if (!f.found[0]) return 0;
     snprintf(o->path, sizeof o->path, "%s/%s", dir, f.found);
     return hostdir_stat(o);

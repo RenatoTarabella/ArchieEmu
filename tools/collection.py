@@ -108,9 +108,15 @@ def badness(name):
 
 
 def clean(s):
+    """nome della cartella: senza [varianti] e (note), "X, The" -> "The X",
+    al massimo 40 caratteri (il Filer di RISC OS 3.11 non regge nomi lunghi)"""
     s = re.sub(r"\s*\[[^\]]*\]", "", s)
+    s = re.sub(r"\s*\([^)]*\)", "", s)
+    m = re.match(r"^(.*), The$", s.strip())
+    if m:
+        s = "The " + m.group(1)
     s = re.sub(r"[<>:\"|?*\\/]", "_", s)
-    return s.strip()
+    return s.strip()[:40]
 
 
 def find_title(games, title):
@@ -190,7 +196,7 @@ def main():
         os.makedirs(out, exist_ok=True)
         for i, src in enumerate(imgs, 1):
             ext = os.path.splitext(src)[1].lower()
-            target = os.path.join(out, (name if len(imgs) == 1 else "%s - Disc %d" % (name, i)) + ext)
+            target = os.path.join(out, ("Disc" if len(imgs) == 1 else "Disc %d" % i) + ext)
             shutil.copyfile(src, target)
         print("%-60s %d %s" % (name, len(imgs), ", ".join(os.path.splitext(x)[1] for x in imgs)))
 

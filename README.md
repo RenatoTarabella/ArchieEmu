@@ -204,7 +204,10 @@ Ctrl+Shift+F12 (shutdown) reach RISC OS. The mouse is the Archimedes one: left
 Select, middle Menu, right Adjust (`--right-menu` makes the right button Menu).
 On the Mac the same commands are in the Machine menu (Cmd shortcuts).
 
-Dropping an `.adf` file on the window also inserts it.
+Dropping an `.adf` file on the window also inserts it. Besides `.adf`/`.adl`
+images the drives accept **`.hfe`** (HxC) flux images: they keep the original
+discs' copy protection (sectors with deliberately bad CRCs, deleted data,
+overlapping sectors), so protected games run from them. HFE discs are read only.
 
 Tested software: Zarch (Play It Again Sam 2), Pacmania, Elite (launch it with a
 double click from the desktop: from the F12 command line it stops with

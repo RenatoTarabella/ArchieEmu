@@ -20,7 +20,8 @@ A "!System" folder at the top of HostFS is registered when you open it (some
 software needs one). To unpack a floppy image into HostFS, with the right types,
 use tools/adfextract.py from the source code on GitHub.
 
-Floppy disc images (.adf, ADFS 800 KB) can go in the "ADF" folder. Insert one
+Floppy disc images (.adf, ADFS 800 KB, or .hfe flux images, which keep the
+original copy protection) can go in the "ADF" folder. Insert one
 with Ctrl+F9 or by dropping the file on the window, or from the command line:
   archie.exe --floppy game.adf --floppy2 disc2.adf
 

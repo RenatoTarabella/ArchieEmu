@@ -213,7 +213,7 @@ static void insert_floppy(int drive, const char *path)
     } else {
         app.floppy_name[drive][0] = 0;
         show_message(@"Archimedes", [NSString stringWithFormat:@"Unrecognised image:\n%s\n\n"
-                                     "An ADFS .adf image is needed (800 KB or 640 KB).", path]);
+                                     "An ADFS .adf image (800 KB or 640 KB) or an .hfe is needed.", path]);
     }
     update_title();
 }

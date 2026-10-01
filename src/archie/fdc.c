@@ -14,6 +14,9 @@
  *   in singola 64 us. Le immagini sono tutte in MFM: in singola densita'
  *   il controller non trova nessun ID (Record Not Found).
  *
+ * HFE (HxC): flusso MFM grezzo, decodificato all'inserimento in tracce
+ *   "custom" (vedi load_hfe); conserva le protezioni anticopia. Sola lettura.
+ *
  * Formati riconosciuti (dalla dimensione del file)
  *   819200  D/E: 80 tracce, 2 facce, 5 settori da 1024 (0-4)
  *   655360  L:   80 tracce, 2 facce, 16 settori da 256 (0-15)
@@ -264,6 +267,118 @@ void fdc_eject(Fdc *f, int drive)
     d->disc_changed = 1;
 }
 
+/* ------------------------------------------------------------------ */
+/* immagini HFE (HxC Floppy Emulator, versione 1)                      */
+/* ------------------------------------------------------------------ */
+
+/* L'HFE registra il flusso magnetico, non i settori: si conservano cosi'
+   le protezioni anticopia (settori con CRC sbagliato, dati cancellati,
+   settori che sconfinano nel successivo, numeri di traccia "sbagliati").
+   Intestazione da 512 byte: "HXCPICFE", tracce (+9), facce (+10), velocita'
+   in kbit/s (+12), tabella delle tracce (+18, in blocchi da 512). Per ogni
+   traccia offset (blocchi) e lunghezza; i dati vanno a blocchi da 512 byte,
+   256 della faccia 0 e 256 della faccia 1. Ogni byte porta 8 celle MFM, la
+   prima nel bit 0. Si cerca il sincronismo 4489 (A1 con un impulso di clock
+   mancante) e si decodifica un byte ogni 16 celle; i settori si ricostruiscono
+   come in apply_written_track, come li vedrebbe il WD1772. Solo lettura. */
+
+/* celle di una faccia -> byte decodificati (mk = sincronismo A1); posizioni in byte */
+static int hfe_decode(const uint8_t *cells, int nbytes, uint8_t *raw, uint8_t *mk, int max)
+{
+    uint32_t sr = 0, word = 0;
+    int aligned = 0, cnt = 0, n = 0;
+    for (int i = 0; i < nbytes * 8 && n < max; i++) {
+        uint32_t bit = (cells[i >> 3] >> (i & 7)) & 1;
+        sr = ((sr << 1) | bit) & 0xFFFF;
+        if (sr == 0x4489) {
+            raw[n] = 0xA1;
+            mk[n++] = 1;
+            aligned = 1;
+            cnt = 0;
+            word = 0;
+            continue;
+        }
+        if (!aligned) continue;
+        word = ((word << 1) | bit) & 0xFFFF;
+        if (++cnt == 16) {
+            uint8_t v = 0;
+            for (int k = 0; k < 8; k++) v = (uint8_t)(v << 1 | ((word >> (14 - 2 * k)) & 1));
+            raw[n] = v;
+            mk[n++] = 0;
+            cnt = 0;
+        }
+    }
+    return n;
+}
+
+static int is_mark(const uint8_t *raw, const uint8_t *mk, int i, int fm, uint8_t lo, uint8_t hi);
+
+/* settori di una traccia decodificata; scale = posizioni in byte da 32 us */
+static struct FdcCustomTrack *hfe_track(const uint8_t *raw, const uint8_t *mk, int len, double scale)
+{
+    struct FdcCustomTrack *c = calloc(1, sizeof *c);
+    if (!c) return NULL;
+    for (int i = 0; i < len && c->t.count < MAX_SECS; i++) {
+        if (!is_mark(raw, mk, i, 0, 0xFE, 0xFE) || i + 7 > len) continue;
+        FdcSec *s = &c->t.sec[c->t.count];
+        memcpy(s->id, raw + i + 1, 4);
+        s->id_am = (int)(i * scale);
+        s->id_crc_ok = field_crc(0, 0xFE, s->id, 4) == (uint16_t)(raw[i + 5] << 8 | raw[i + 6]);
+        s->size = 128 << (s->id[3] & 3);
+        s->data_am = -1;
+        for (int j = i + 7; j < i + 7 + 43 && j < len; j++) {
+            if (!is_mark(raw, mk, j, 0, 0xF8, 0xFB)) continue;
+            s->data_am = (int)(j * scale);
+            s->deleted = raw[j] <= 0xF9;
+            /* il WD1772 legge 'size' byte qualunque cosa ci sia dopo (anche
+               il settore seguente): cosi' fanno certe protezioni */
+            int avail = len - (j + 1);
+            int n = avail < s->size ? avail : s->size;
+            memcpy(c->data[c->t.count], raw + j + 1, (size_t)n);
+            s->data_crc_ok = n == s->size && j + 3 + s->size <= len &&
+                field_crc(0, raw[j], raw + j + 1, s->size) == (uint16_t)(raw[j + 1 + s->size] << 8 | raw[j + 2 + s->size]);
+            break;
+        }
+        c->t.count++;
+        i += 6;
+    }
+    return c;
+}
+
+static int load_hfe(FdcDrive *d, const uint8_t *file, long n)
+{
+    if (n < 512 || memcmp(file, "HXCPICFE", 8)) return 0;
+    int tracks = file[9], sides = file[10];
+    int rate = file[12] | file[13] << 8;
+    long table = (long)(file[18] | file[19] << 8) * 512;
+    if (tracks < 1 || sides < 1 || sides > 2 || table + tracks * 4 > n) return 0;
+    if (tracks > FDC_MAX_CYL) tracks = FDC_MAX_CYL;
+    double scale = rate > 0 ? 250.0 / rate : 1.0;       /* posizioni in byte a 250 kbit/s */
+    for (int t = 0; t < tracks; t++) {
+        const uint8_t *e = file + table + t * 4;
+        long off = (long)(e[0] | e[1] << 8) * 512, len = e[2] | e[3] << 8;
+        if (off + len > n) len = n - off > 0 ? n - off : 0;
+        int half = (int)(len / 2);
+        uint8_t *cells = malloc((size_t)half + 1), *raw = malloc((size_t)half), *mk = malloc((size_t)half);
+        if (!cells || !raw || !mk) { free(cells); free(raw); free(mk); return 0; }
+        for (int side = 0; side < sides; side++) {
+            int k = 0;
+            for (long b = 0; b < len && k < half; b += 512)
+                for (int i = 0; i < 256 && k < half; i++) cells[k++] = file[off + b + side * 256 + i];
+            int nraw = hfe_decode(cells, k, raw, mk, half);
+            d->custom[t * 2 + side] = hfe_track(raw, mk, nraw, scale);
+        }
+        free(cells);
+        free(raw);
+        free(mk);
+    }
+    d->tracks = tracks;
+    d->sides = sides;
+    d->sectors = 5;
+    d->sector_size = 1024;
+    return 1;
+}
+
 int fdc_insert(Fdc *f, int drive, const char *path)
 {
     if (drive < 0 || drive >= FDC_DRIVES || !path) return 0;
@@ -271,6 +386,28 @@ int fdc_insert(Fdc *f, int drive, const char *path)
     if (!fp) return 0;
     fseek(fp, 0, SEEK_END);
     long n = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    char sig[8] = "";
+    if (fread(sig, 1, 8, fp) == 8 && !memcmp(sig, "HXCPICFE", 8)) {
+        uint8_t *file = malloc((size_t)n);
+        fseek(fp, 0, SEEK_SET);
+        int ok = file && fread(file, 1, (size_t)n, fp) == (size_t)n;
+        fclose(fp);
+        if (!ok) { free(file); return 0; }
+        fdc_eject(f, drive);
+        FdcDrive *d = &f->drive[drive];
+        ok = load_hfe(d, file, n);
+        free(file);
+        if (!ok) { free_custom(d); return 0; }
+        d->image = calloc(1, 1);                       /* c'e' un disco; i settori stanno nelle tracce */
+        d->size = 0;
+        d->write_protect = 1;
+        d->first_sector = 0;
+        d->dirty = 0;
+        d->disc_changed = 1;
+        snprintf(d->path, sizeof d->path, "%s", path);
+        return 1;
+    }
     fseek(fp, 0, SEEK_SET);
     int tracks, sides, sectors, ssize;
     long full = n;

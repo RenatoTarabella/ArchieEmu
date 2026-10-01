@@ -31,7 +31,8 @@ into it from RISC OS: the files are shared both ways. File types are suffixes
 in the host names, as in RPCEmu: "Game,ff8" is Absolute, "Prog,ffb" is BASIC.
 A "!System" folder at the top of HostFS is registered when you open it.
 
-Floppy images (.adf) can go in Documents/ArchieEmu/ADF. Insert one from the
+Floppy images (.adf, or .hfe flux images that keep the original copy
+protection) can go in Documents/ArchieEmu/ADF. Insert one from the
 Machine menu, by dropping it on the window or by double-clicking it.
 
   Cmd+O / Cmd+Shift+O   insert a floppy in drive :0 / :1

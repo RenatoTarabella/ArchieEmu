@@ -246,7 +246,7 @@ static void insert_floppy(int drive, const char *path)
     } else {
         app.floppy_name[drive][0] = 0;
         char msg[600];
-        snprintf(msg, sizeof msg, "Immagine non riconosciuta:\n%s\n\nServe un'immagine ADFS .adf (800 KB o 640 KB).", path);
+        snprintf(msg, sizeof msg, "Immagine non riconosciuta:\n%s\n\nServe un'immagine ADFS .adf (800 KB o 640 KB) o un .hfe.", path);
         MessageBoxA(app.hwnd, msg, "Archimedes", MB_ICONWARNING);
     }
     update_title();
@@ -303,7 +303,7 @@ static void choose_floppy(int drive)
     memset(&ofn, 0, sizeof ofn);
     ofn.lStructSize = sizeof ofn;
     ofn.hwndOwner = app.hwnd;
-    ofn.lpstrFilter = "Immagini ADFS (*.adf, *.adl)\0*.adf;*.adl\0Tutti i file\0*.*\0";
+    ofn.lpstrFilter = "Dischetti (*.adf, *.adl, *.hfe)\0*.adf;*.adl;*.hfe\0Tutti i file\0*.*\0";
     ofn.lpstrFile = path;
     ofn.nMaxFile = MAX_PATH;
     ofn.lpstrInitialDir = initial[0] ? initial : NULL;

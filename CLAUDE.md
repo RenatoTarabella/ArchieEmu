@@ -68,7 +68,9 @@ type long test lines. The tools for that:
   `filer_opendir` opens a directory window.
 - `tools/mkadfs.py` builds ADFS D images from a directory, zip (RISC OS extra
   field; Implode via 7-Zip) or Spark/Arc archive. `tools/adfextract.py` does the
-  reverse (L, D, E formats) into a HostFS folder.
+  reverse (L, D, E formats, zip/Spark/ArcFS archives, CD ISOs) into a HostFS
+  folder, opening nested archives. The floppy drives also take HFE v1 flux
+  images (decoded to "custom" tracks at insert time, read only).
 - `archie_boot --keys` types with a UK keyboard: `"` comes out as `@` and `~` is
   lost (use `{ALT126}`); prompts that flush the keyboard buffer (e.g. `*Copy`'s
   confirmation) swallow keys typed ahead, so put `{WAIT}` before the answer.

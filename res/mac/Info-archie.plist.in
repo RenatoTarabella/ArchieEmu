@@ -18,11 +18,11 @@
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>
-            <key>CFBundleTypeName</key>         <string>ADFS floppy disc image</string>
+            <key>CFBundleTypeName</key>         <string>Archimedes floppy disc image</string>
             <key>CFBundleTypeRole</key>         <string>Viewer</string>
             <key>LSHandlerRank</key>            <string>Alternate</string>
             <key>CFBundleTypeExtensions</key>
-            <array><string>adf</string><string>adl</string></array>
+            <array><string>adf</string><string>adl</string><string>hfe</string></array>
         </dict>
     </array>
 </dict>

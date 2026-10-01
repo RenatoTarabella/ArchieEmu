@@ -191,12 +191,18 @@ types on the emulated keyboard.
 
 | Keys | Action |
 |---|---|
-| Ctrl+F9 | choose a floppy image (with Shift: drive 1) |
-| Ctrl+F8 | eject |
-| Ctrl+F10 | sound on/off |
-| Ctrl+F11 | release the mouse (click in the window to capture it) |
-| Ctrl+F12 | turbo |
-| Ctrl+Shift+F12 | reset |
+| Ctrl+Alt+F9 | choose a floppy image (with Shift: drive 1) |
+| Ctrl+Alt+F8 | eject |
+| Ctrl+Alt+F10 | sound on/off |
+| Ctrl+Alt+F11 | release the mouse (click in the window to capture it) |
+| Ctrl+Alt+F12 | turbo |
+| Ctrl+Alt+Shift+F12 | reset |
+| Ctrl+Alt+F7 | right button as Menu (for mice without a middle button) |
+
+The emulator's own shortcuts use Ctrl+Alt so that Ctrl+F12 (task window) and
+Ctrl+Shift+F12 (shutdown) reach RISC OS. The mouse is the Archimedes one: left
+Select, middle Menu, right Adjust (`--right-menu` makes the right button Menu).
+On the Mac the same commands are in the Machine menu (Cmd shortcuts).
 
 Dropping an `.adf` file on the window also inserts it.
 

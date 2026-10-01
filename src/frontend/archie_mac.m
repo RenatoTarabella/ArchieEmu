@@ -6,9 +6,11 @@
  *
  * Come archie_win32.c. La tastiera passa per la stessa traduzione
  * (archie_keys.c): i tasti del Mac diventano i codici di Windows nella
- * stessa posizione (mac_keys.c), Option fa da AltGr. Comandi dal menu
+ * stessa posizione (mac_keys.c), Option fa da AltGr. Comandi solo dal menu
  * Machine (Cmd+O dischetto, Cmd+E espelle, Cmd+T turbo, Cmd+Esc libera il
- * mouse...) e, dove macOS li lascia passare, gli stessi Ctrl+F8...F12 di Windows.
+ * mouse...): i tasti Ctrl+F restano a RISC OS (Ctrl+F12 task window...).
+ * Mouse: sinistro Select, centrale Menu, destro Adjust, come sull'Archimedes;
+ * "Right Button Is Menu" (ricordato fra un avvio e l'altro) per il trackpad.
  *
  * La ROM si cerca accanto all'applicazione (roms/1. Major/ROM311) e in
  * ~/Documents/ArchieEmu/roms/ROM311; se manca la si sceglie con una finestra
@@ -132,6 +134,7 @@ typedef struct App {
     double    acc_x, acc_y;
     double    img_w;
     int       captured;              /* mouse catturato: movimento relativo */
+    int       right_menu;            /* tasto destro = Menu invece di Adjust */
     /* tastiera */
     uint32_t  dead;
     double    caps_release;          /* Caps Lock: rilascio ritardato */
@@ -365,27 +368,9 @@ static void mouse_moved(NSEvent *e)
     CGColorSpaceRelease(rgb);
 }
 
-/* Ctrl+F8...F12 come su Windows */
-- (BOOL)hotkey:(NSEvent *)e down:(BOOL)down
-{
-    if (!(e.modifierFlags & NSEventModifierFlagControl)) return NO;
-    int shift = (e.modifierFlags & NSEventModifierFlagShift) != 0;
-    switch (e.keyCode) {
-    case 0x65: if (down) choose_floppy(shift); return YES;                  /* F9 */
-    case 0x64: if (down) eject_floppy(shift); return YES;                   /* F8 */
-    case 0x67: if (down) capture_mouse(0); return YES;                      /* F11 */
-    case 0x6D: if (down) audio.muted = !audio.muted; return YES;            /* F10 */
-    case 0x6F:                                                              /* F12 */
-        if (down) { if (shift) archie_reset(&app.a); else toggle_turbo(); update_title(); }
-        return YES;
-    default: return NO;
-    }
-}
-
 - (void)keyDown:(NSEvent *)e
 {
     if (e.modifierFlags & NSEventModifierFlagCommand) return;   /* i comandi li gestisce il menu */
-    if ([self hotkey:e down:YES]) return;
     if (e.isARepeat) return;                                     /* la ripetizione la fa la macchina */
     int ext, vk = mac_key_to_vk(e.keyCode, &ext);
     if (vk < 0) return;
@@ -398,7 +383,6 @@ static void mouse_moved(NSEvent *e)
 
 - (void)keyUp:(NSEvent *)e
 {
-    if ([self hotkey:e down:NO]) return;
     int ext, vk = mac_key_to_vk(e.keyCode, &ext);
     if (vk >= 0) keys_key(&keys, vk, ext, 0, 0, now_ms());
 }
@@ -433,10 +417,12 @@ static void mouse_moved(NSEvent *e)
     kbd_key(&app.a.kbd, 0x70, 1);
 }
 - (void)mouseUp:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, 0x70, 0); }
-- (void)rightMouseDown:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, 0x71, 1); }
-- (void)rightMouseUp:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, 0x71, 0); }
-- (void)otherMouseDown:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, 0x72, 1); }
-- (void)otherMouseUp:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, 0x72, 0); }
+/* come sull'Archimedes: centrale = Menu, destro = Adjust; con "Right Button
+   Is Menu" (trackpad, mouse a due tasti) il destro fa Menu */
+- (void)rightMouseDown:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, app.right_menu ? 0x71 : 0x72, 1); }
+- (void)rightMouseUp:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, app.right_menu ? 0x71 : 0x72, 0); }
+- (void)otherMouseDown:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, app.right_menu ? 0x72 : 0x71, 1); }
+- (void)otherMouseUp:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, app.right_menu ? 0x72 : 0x71, 0); }
 
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)s { (void)s; return NSDragOperationCopy; }
 
@@ -459,6 +445,12 @@ static void mouse_moved(NSEvent *e)
 - (void)toggleSound:(id)s { (void)s; audio.muted = !audio.muted; }
 - (void)releaseMouse:(id)s { (void)s; capture_mouse(0); }
 - (void)resetMachine:(id)s { (void)s; archie_reset(&app.a); }
+- (void)toggleRightMenu:(NSMenuItem *)item
+{
+    app.right_menu = !app.right_menu;
+    item.state = app.right_menu ? NSControlStateValueOn : NSControlStateValueOff;
+    [NSUserDefaults.standardUserDefaults setBool:app.right_menu forKey:@"RightButtonIsMenu"];
+}
 
 @end
 
@@ -591,6 +583,8 @@ static void build_menu(void)
     NSMenuItem *snd = [m addItemWithTitle:@"Sound On/Off" action:@selector(toggleSound:) keyEquivalent:@"m"];
     snd.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
     [m addItemWithTitle:@"Release Mouse" action:@selector(releaseMouse:) keyEquivalent:@"\e"];
+    NSMenuItem *rm = [m addItemWithTitle:@"Right Button Is Menu" action:@selector(toggleRightMenu:) keyEquivalent:@""];
+    rm.state = app.right_menu ? NSControlStateValueOn : NSControlStateValueOff;
     [m addItem:NSMenuItem.separatorItem];
     NSMenuItem *rst = [m addItemWithTitle:@"Reset" action:@selector(resetMachine:) keyEquivalent:@"r"];
     rst.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
@@ -615,6 +609,7 @@ int main(int argc, char **argv)
         }
         if (app.mhz <= 0) app.mhz = 8;
         cfg.mhz = app.mhz;
+        app.right_menu = [NSUserDefaults.standardUserDefaults boolForKey:@"RightButtonIsMenu"];
 
         [NSApplication sharedApplication];
         NSApp.activationPolicy = NSApplicationActivationPolicyRegular;

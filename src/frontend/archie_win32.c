@@ -2,7 +2,7 @@
  * archie_win32.c - Finestra della macchina Archimedes (Win32/GDI).
  *
  *   archie [--rom file] [--floppy disco.adf] [--floppy2 disco.adf]
- *          [--ram MB] [--mhz N] [--cmos file] [--hostfs cartella]
+ *          [--ram MB] [--mhz N] [--cmos file] [--hostfs cartella] [--right-menu]
  *
  * HostFS: la cartella "HostFS" accanto all'eseguibile (creata se manca)
  * compare in RISC OS come disco, con l'icona sulla barra.
@@ -13,13 +13,15 @@
  * sull'Archimedes UK i tasti che danno quel carattere, e le lettere accentate
  * si compongono con Alt + codice sul tastierino, come in RISC OS.
  * Mouse come su un Archimedes vero:
- *   tasto sinistro = Select, destro = Menu, centrale = Adjust.
+ *   tasto sinistro = Select, centrale = Menu, destro = Adjust
+ *   (--right-menu o Ctrl+Alt+F7: destro = Menu, per i mouse a due tasti).
  * Un clic nella finestra cattura il mouse (serve ai giochi come Zarch,
- * che leggono solo il movimento): Ctrl+F11 lo libera.
- * Ctrl+F12 alterna il clock dell'ARM2 (8 MHz) e il turbo; Ctrl+Shift+F12
- * resetta la macchina; Ctrl+F10 spegne e riaccende l'audio.
- * Ctrl+F9 sceglie il dischetto dell'unita' 0 (con Shift l'unita' 1),
- * Ctrl+F8 lo espelle. Trascinando un'immagine .adf sulla finestra la si
+ * che leggono solo il movimento): Ctrl+Alt+F11 lo libera.
+ * I comandi dell'emulatore usano Ctrl+Alt, perche' Ctrl+F12 e Ctrl+Shift+F12
+ * servono a RISC OS: Ctrl+Alt+F12 alterna il clock dell'ARM2 (8 MHz) e il
+ * turbo; Ctrl+Alt+Shift+F12 resetta la macchina; Ctrl+Alt+F10 spegne e
+ * riaccende l'audio. Ctrl+Alt+F9 sceglie il dischetto dell'unita' 0 (con
+ * Shift l'unita' 1), Ctrl+Alt+F8 lo espelle. Trascinando un'immagine .adf sulla finestra la si
  * inserisce nell'unita' 0 (con Shift nell'unita' 1).
  */
 #define WIN32_LEAN_AND_MEAN
@@ -138,6 +140,7 @@ typedef struct App {
     double    acc_x, acc_y;
     int       img_x, img_y, img_w, img_h;
     int       captured;              /* mouse catturato: movimento relativo */
+    int       right_menu;            /* tasto destro = Menu invece di Adjust */
 } App;
 
 static App app;
@@ -161,9 +164,9 @@ static const char *base_name(const char *p)
 static void update_title(void)
 {
     char t[256];
-    snprintf(t, sizeof t, "Archimedes - %s   [%s, Ctrl+F12 %s]%s%s%s%s",
+    snprintf(t, sizeof t, "Archimedes - %s   [%s, Ctrl+Alt+F12 %s]%s%s%s%s",
              app.rom_name, app.turbo ? "TURBO" : "ARM2 8 MHz", app.turbo ? "per 8 MHz" : "per il turbo",
-             app.captured ? "   [mouse catturato: Ctrl+F11 per liberarlo]" : "   [clic per catturare il mouse]",
+             app.captured ? "   [mouse catturato: Ctrl+Alt+F11 per liberarlo]" : "   [clic per catturare il mouse]",
              app.floppy_name[0][0] ? "   :0 " : "", app.floppy_name[0], app.floppy_name[1][0] ? "  :1 " : "");
     if (app.floppy_name[1][0]) strncat(t, app.floppy_name[1], sizeof t - strlen(t) - 1);
     if (strcmp(t, app.title)) {
@@ -281,7 +284,7 @@ static void capture_mouse(int on)
 
 static const char *find_file(const char *const *rel, size_t n, char *buf, size_t size);
 
-/* Ctrl+F9: scelta di un'immagine con la finestra di Windows, partendo dalla
+/* Ctrl+Alt+F9: scelta di un'immagine con la finestra di Windows, partendo dalla
    cartella ADF del progetto (o dall'ultima usata) */
 static void choose_floppy(int drive)
 {
@@ -310,6 +313,7 @@ static void choose_floppy(int drive)
     /* i rilasci di Ctrl e Shift sono andati alla finestra di dialogo */
     keys_key(&keys, VK_SHIFT, 0, 0, 0, GetTickCount());
     keys_key(&keys, VK_CONTROL, 0, 0, 0, GetTickCount());
+    keys_key(&keys, VK_MENU, 0, 0, 0, GetTickCount());
     if (!ok) return;
     insert_floppy(drive, path);
     /* la prossima volta si riparte da questa cartella */
@@ -327,11 +331,18 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_SYSKEYUP: {
         int down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
         if (down && (lp & (1 << 30))) return 0;             /* ripetizione: la fa la macchina */
-        if (wp == VK_F9 && GetKeyState(VK_CONTROL) < 0) {
+        /* comandi dell'emulatore con Ctrl+Alt: Ctrl+F12, Ctrl+Shift+F12 e
+           gli altri Ctrl+F restano a RISC OS (task window, spegnimento...) */
+        int hot = GetKeyState(VK_CONTROL) < 0 && GetKeyState(VK_MENU) < 0;
+        if (wp == VK_F7 && hot) {
+            if (down) { app.right_menu = !app.right_menu; update_title(); }
+            return 0;
+        }
+        if (wp == VK_F9 && hot) {
             if (down) choose_floppy(GetKeyState(VK_SHIFT) < 0 ? 1 : 0);
             return 0;
         }
-        if (wp == VK_F8 && GetKeyState(VK_CONTROL) < 0) {
+        if (wp == VK_F8 && hot) {
             if (down) {
                 int d = GetKeyState(VK_SHIFT) < 0 ? 1 : 0;
                 fdc_eject(&app.a.fdc, d);
@@ -340,15 +351,15 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             }
             return 0;
         }
-        if (wp == VK_F11 && GetKeyState(VK_CONTROL) < 0) {
+        if (wp == VK_F11 && hot) {
             if (down) capture_mouse(0);
             return 0;
         }
-        if (wp == VK_F10 && GetKeyState(VK_CONTROL) < 0) {
+        if (wp == VK_F10 && hot) {
             if (down) audio.muted = !audio.muted;
             return 0;
         }
-        if (wp == VK_F12 && GetKeyState(VK_CONTROL) < 0) {
+        if (wp == VK_F12 && hot) {
             if (down) {
                 if (GetKeyState(VK_SHIFT) < 0) archie_reset(&app.a);
                 else {
@@ -412,10 +423,12 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     case WM_LBUTTONUP:   mouse_button(0x70, 0); return 0;
     case WM_KILLFOCUS:   capture_mouse(0); return 0;
-    case WM_RBUTTONDOWN: mouse_button(0x71, 1); return 0;
-    case WM_RBUTTONUP:   mouse_button(0x71, 0); return 0;
-    case WM_MBUTTONDOWN: mouse_button(0x72, 1); return 0;
-    case WM_MBUTTONUP:   mouse_button(0x72, 0); return 0;
+    /* come sull'Archimedes: centrale = Menu, destro = Adjust (con --right-menu
+       o Ctrl+Alt+F7 il destro fa Menu, per i mouse senza tasto centrale) */
+    case WM_RBUTTONDOWN: mouse_button(app.right_menu ? 0x71 : 0x72, 1); return 0;
+    case WM_RBUTTONUP:   mouse_button(app.right_menu ? 0x71 : 0x72, 0); return 0;
+    case WM_MBUTTONDOWN: mouse_button(app.right_menu ? 0x72 : 0x71, 1); return 0;
+    case WM_MBUTTONUP:   mouse_button(app.right_menu ? 0x72 : 0x71, 0); return 0;
     case WM_DROPFILES: {
         HDROP drop = (HDROP)wp;
         char path[MAX_PATH];
@@ -471,6 +484,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--mhz") && i + 1 < argc) app.mhz = atof(argv[++i]);
         else if (!strcmp(argv[i], "--cmos") && i + 1 < argc) cfg.cmos_path = argv[++i];
         else if (!strcmp(argv[i], "--hostfs") && i + 1 < argc) cfg.hostfs_dir = argv[++i];
+        else if (!strcmp(argv[i], "--right-menu")) app.right_menu = 1;
         else if (argv[i][0] != '-' && !cfg.floppy[0]) cfg.floppy[0] = argv[i];   /* file aperto con l'eseguibile */
     }
     if (app.mhz <= 0) app.mhz = 8;

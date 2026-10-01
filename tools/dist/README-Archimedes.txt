@@ -24,13 +24,17 @@ Floppy disc images (.adf, ADFS 800 KB) can go in the "ADF" folder. Insert one
 with Ctrl+F9 or by dropping the file on the window, or from the command line:
   archie.exe --floppy game.adf --floppy2 disc2.adf
 
-Keys
-  Ctrl+F9          choose a floppy image for drive 0 (with Shift: drive 1)
-  Ctrl+F8          eject
-  Ctrl+F10         sound on/off
-  Ctrl+F11         release the mouse (click in the window to capture it)
-  Ctrl+F12         turbo
-  Ctrl+Shift+F12   reset
+Keys (Ctrl+Alt, so that Ctrl+F12 and Ctrl+Shift+F12 still reach RISC OS)
+  Ctrl+Alt+F9          choose a floppy image for drive 0 (with Shift: drive 1)
+  Ctrl+Alt+F8          eject
+  Ctrl+Alt+F10         sound on/off
+  Ctrl+Alt+F11         release the mouse (click in the window to capture it)
+  Ctrl+Alt+F12         turbo
+  Ctrl+Alt+Shift+F12   reset
+  Ctrl+Alt+F7          right button as Menu (mice without a middle button)
+
+Mouse as on the Archimedes: left = Select, middle = Menu, right = Adjust.
+Start with --right-menu to make the right button Menu.
 
 Desktop applications must be started by double-clicking them in the Filer:
 from the F12 command line they stop with "Wimp is currently active".

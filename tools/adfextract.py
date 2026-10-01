@@ -1,10 +1,12 @@
 """
-adfextract.py - Estrae un'immagine floppy ADFS in una cartella dell'host,
-con i nomi e i tipi di RISC OS nella convenzione di HostFS/RPCEmu.
+adfextract.py - Estrae un'immagine floppy ADFS, uno zip RISC OS o un archivio
+Spark in una cartella dell'host, con i nomi e i tipi di RISC OS nella
+convenzione di HostFS/RPCEmu.
 
-    python tools/adfextract.py immagine.adf cartella [--list]
+    python tools/adfextract.py immagine.adf|archivio.zip|archivio.spk cartella [--list]
 
 Esempio: tools/adfextract.py "Hopper 1.00.adf" HostFS/Hopper
+Zip e Spark si leggono con il codice di mkadfs.py (tipi dal campo extra RISC OS).
 
 Formati: L (640 KB, mappa vecchia, directory da &500), D (800 KB, mappa
 vecchia, directory da &800) ed E (800 KB, mappa nuova a frammenti). Le
@@ -170,6 +172,28 @@ def extract(disc, addr, size, max_entries, dest, listing, depth=0):
     return count
 
 
+def extract_tree(node, dest, listing, depth=0):
+    """albero di mkadfs.Node (da zip o Spark) -> cartella dell'host"""
+    count = 0
+    for c in node.children:
+        hn = host_name(c.name, c.load or 0, c.exec, c.is_dir)
+        if listing:
+            kind = "DIR " if c.is_dir else ("%03X " % ((c.load >> 8) & 0xFFF) if (c.load >> 20) == 0xFFF else "    ")
+            print("%s%s %-12s %8d" % ("  " * depth, kind, c.name.decode("latin-1"), 0 if c.is_dir else len(c.data)))
+        path = os.path.join(dest, hn)
+        if c.is_dir:
+            if not listing:
+                os.makedirs(path, exist_ok=True)
+            count += extract_tree(c, path, listing, depth + 1)
+        else:
+            if not listing:
+                with open(path, "wb") as f:
+                    f.write(c.data)
+                set_date(path, c.load, c.exec)
+            count += 1
+    return count
+
+
 def main():
     ap = argparse.ArgumentParser(description="Estrae un'immagine ADFS in una cartella (per HostFS)")
     ap.add_argument("immagine")
@@ -179,10 +203,19 @@ def main():
     if not a.list and not a.cartella:
         ap.error("serve la cartella di destinazione (o --list)")
     img = open(a.immagine, "rb").read()
-    disc, root, size, max_entries = detect(img)
     if not a.list:
         os.makedirs(a.cartella, exist_ok=True)
-    n = extract(disc, root, size, max_entries, a.cartella or "", a.list)
+    if img[:2] == b"PK" or img[:1] == b"":
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import mkadfs
+        warnings = []
+        tree = mkadfs.from_zip(a.immagine, warnings) if img[:2] == b"PK" else mkadfs.from_spark(a.immagine, warnings)
+        for w in warnings:
+            print("attenzione:", w, file=sys.stderr)
+        n = extract_tree(tree, a.cartella or "", a.list)
+    else:
+        disc, root, size, max_entries = detect(img)
+        n = extract(disc, root, size, max_entries, a.cartella or "", a.list)
     if not a.list:
         print("%s: %d file in %s" % (os.path.basename(a.immagine), n, a.cartella))
 

@@ -41,6 +41,9 @@ Machine menu, by dropping it on the window or by double-clicking it.
   Cmd+Esc               release the mouse (click in the window to capture it)
   Cmd+Shift+R           reset
 
+Mouse as on the Archimedes: left = Select, middle = Menu, right = Adjust. On a
+trackpad or a two-button mouse, tick Machine > Right Button Is Menu.
+
 Option works as AltGr for symbols and accented letters. On Apple keyboards
 the function keys need fn: fn+F12 opens the RISC OS command line.
 Desktop applications must be started by double-clicking them in the Filer.

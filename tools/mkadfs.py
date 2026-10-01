@@ -136,9 +136,25 @@ SEVEN_ZIP = next((p for p in (r"C:\Program Files\7-Zip\7z.exe", r"C:\Program Fil
                   if os.path.exists(p)), None)
 
 
+class _LenientZipInfo(zipfile.ZipInfo):
+    """alcuni zip di SparkFS dichiarano il campo extra RISC OS piu' lungo di
+    quello che c'e': Python rifiuterebbe tutto l'archivio ("Corrupt extra
+    field"). Il campo lo legge comunque zip_riscos_info, con i byte presenti."""
+    def _decodeExtra(self, *args):
+        try:
+            super()._decodeExtra(*args)
+        except zipfile.BadZipFile:
+            pass
+
+
 def from_zip(path, warnings):
     root = Node(b"$", True)
-    z = zipfile.ZipFile(path)
+    saved = zipfile.ZipInfo
+    zipfile.ZipInfo = _LenientZipInfo
+    try:
+        z = zipfile.ZipFile(path)
+    finally:
+        zipfile.ZipInfo = saved
     # Implode (metodo 6) e altri metodi antichi: Python non li legge, 7-Zip si'.
     # Dallo zip si prendono comunque i tipi RISC OS dei campi extra.
     extracted = None

@@ -67,7 +67,13 @@ type long test lines. The tools for that:
   line fails with "Wimp is currently active". Use `filer_run :0.!App` instead.
   `filer_opendir` opens a directory window.
 - `tools/mkadfs.py` builds ADFS D images from a directory, zip (RISC OS extra
-  field; Implode via 7-Zip) or Spark/Arc archive.
+  field; Implode via 7-Zip) or Spark/Arc archive. `tools/adfextract.py` does the
+  reverse (L, D, E formats) into a HostFS folder.
+- `archie_boot --keys` types with a UK keyboard: `"` comes out as `@` and `~` is
+  lost (use `{ALT126}`); prompts that flush the keyboard buffer (e.g. `*Copy`'s
+  confirmation) swallow keys typed ahead, so put `{WAIT}` before the answer.
+- HostFS: `--hostfs dir` (default `HostFS` next to the exe / `Documents/ArchieEmu/HostFS`).
+  `ARCHIE_HOSTFS_TRACE=1` logs every FileSwitch call with registers.
 
 ## Timing model (don't break it)
 
@@ -98,6 +104,18 @@ type long test lines. The tools for that:
   least once (`FOR j%=1 TO 0` runs once: use `WHILE`); in the inline assembler a
   `:` separates statements even inside a `;` comment; `USR` passes A%–H% in
   R0–R7, so don't use those variables for anything else in the same program.
+- ADFS D/L images: every object must start on a 1 KB sector. ADFS answers
+  "Bad parameters" otherwise, and with the floppy cache on (ADFSBuffers > 0) the
+  error is lost and FileCore polls forever: it looks like an FDC hang but isn't.
+- Podules (from the ROM's Podule Manager 1.26): card N at `&33C0000 + N*&4000`,
+  byte k in D0-D7 of the word at base + 4k, so only 4 KB are readable without a
+  loader; extended ID needs byte0 & &F8 == 0; chunk directory from +16 (type &81
+  = module, &F5 = description, 0 ends). The kernel loads &81 modules at boot.
+- FileSwitch 2.08 (RISC OS 3.11), as HostFS uses it: absolute names (`$`,
+  `$.dir.file`); buffered opens (R2 = &400) get GetBytes/PutBytes by block and
+  offset; *Cat/*Ex/*Info come through Func 14/15; "not found" is Open R1 = 0 or
+  File 5 R0 = 0 (also for names with wildcards, never an error); errors are V set
+  with R0 -> block. R12 on entry is the value passed in R3 to OS_FSControl 12.
 - Fixed-point kernels need exact refinement in BASIC at sphere edges; a false hit
   gives a non-unit normal and the specular power overflows ("Number too big").
 

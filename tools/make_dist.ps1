@@ -1,7 +1,7 @@
 # Crea i due pacchetti portable (macchina BASIC e Archimedes) in dist\
 # Compila con il runtime C statico, cosi' non serve il Visual C++ Redistributable.
-# Uso: powershell -File tools\make_dist.ps1 [-Version v1.0]
-param([string]$Version = "v1.0")
+# Uso: powershell -File tools\make_dist.ps1 [-Version v1.1]
+param([string]$Version = "v1.1")
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -24,10 +24,11 @@ Copy-Item disc\* "$b\disc"
 
 # Archimedes: ROM e dischetti li mette l'utente
 $a = "$stage\ArchieEmu-Archimedes"
-New-Item -ItemType Directory -Force "$a\roms\1. Major", "$a\ADF" | Out-Null
+New-Item -ItemType Directory -Force "$a\roms\1. Major", "$a\ADF", "$a\HostFS" | Out-Null
 Copy-Item "$bin\archie.exe", LICENSE $a
 Copy-Item tools\dist\README-Archimedes.txt "$a\README.txt"
 Set-Content -Encoding ascii "$a\roms\1. Major\PUT_ROM311_HERE.txt" "Put your RISC OS 3.11 ROM image here as a file named ROM311 (not included: copyrighted)."
+Set-Content -Encoding ascii "$a\HostFS\ReadMe" "This folder is the HostFS disc of RISC OS: whatever you put here appears in the emulator, and RISC OS can save here."
 Set-Content -Encoding ascii "$a\ADF\PUT_ADF_IMAGES_HERE.txt" "Put your .adf floppy images here (Ctrl+F9 in the emulator opens this folder)."
 
 foreach ($p in "BASIC", "Archimedes") {

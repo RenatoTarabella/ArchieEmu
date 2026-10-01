@@ -137,7 +137,7 @@ int main(int argc, char **argv)
     layout = LoadKeyboardLayoutA(argc > 2 ? argv[2] : "0000040A", KLF_NOTELLSHELL);
     if (!layout) { fprintf(stderr, "disposizione di tastiera non disponibile\n"); return 1; }
 
-    ArchieConfig cfg = { argv[1], 4, NULL, { NULL, NULL }, 8 };
+    ArchieConfig cfg = { argv[1], 4, NULL, { NULL, NULL }, 8, NULL };
     char err[256];
     if (!archie_create(&a, &cfg, err, sizeof err)) { fprintf(stderr, "%s\n", err); return 1; }
     keys_init(&keys, &a.kbd);

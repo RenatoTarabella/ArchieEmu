@@ -601,7 +601,7 @@ static void build_menu(void)
 int main(int argc, char **argv)
 {
     @autoreleasepool {
-        ArchieConfig cfg = { NULL, 4, NULL, { NULL, NULL }, 8 };
+        ArchieConfig cfg = { NULL, 4, NULL, { NULL, NULL }, 8, NULL };
         app.mhz = 8;
         for (int i = 1; i < argc; i++) {
             if (!strcmp(argv[i], "--rom") && i + 1 < argc) cfg.rom_path = argv[++i];

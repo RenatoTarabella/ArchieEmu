@@ -25,6 +25,12 @@ THE RISC OS ROM IS NOT INCLUDED (it is copyrighted). On first run you are asked
 for your RISC OS 3.11 ROM image (a single 2 MB file): it is copied to
 Documents/ArchieEmu/roms/ROM311, and the CMOS settings are saved next to it.
 
+HostFS: the folder Documents/ArchieEmu/HostFS is a disc in RISC OS, with its
+own icon on the icon bar. Copy RISC OS software into it from the Mac, or save
+into it from RISC OS: the files are shared both ways. File types are suffixes
+in the host names, as in RPCEmu: "Game,ff8" is Absolute, "Prog,ffb" is BASIC.
+A "!System" folder at the top of HostFS is registered when you open it.
+
 Floppy images (.adf) can go in Documents/ArchieEmu/ADF. Insert one from the
 Machine menu, by dropping it on the window or by double-clicking it.
 

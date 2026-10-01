@@ -183,7 +183,7 @@ static void post_latch(void *user, uint8_t v, ArcTime now)
 
 int main(int argc, char **argv)
 {
-    ArchieConfig cfg = { NULL, 4, NULL, { NULL, NULL }, 8 };
+    ArchieConfig cfg = { NULL, 4, NULL, { NULL, NULL }, 8, NULL };
     double ms = 3000;
     const char *png = NULL, *png2 = NULL;   /* png2: l'altro banco del doppio buffer */
     int hist = 0;

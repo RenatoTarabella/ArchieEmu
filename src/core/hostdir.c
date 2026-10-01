@@ -26,13 +26,19 @@
 
 int hostdir_map(const char *root, const char *rel, char *out, size_t size)
 {
-    char buf[256];
+    char buf[512];
     size_t n = 0;
-    for (const char *p = rel; (unsigned char)*p > ' ' && n < sizeof buf - 1; p++) {
+    for (const char *p = rel; (unsigned char)*p > ' ' && n < sizeof buf - 2; p++) {
         char c = *p;
         if (c == '^' || c == '\\' || c == '"' || c == '*' || c == '?' || c == '<' || c == '>' || c == '|' || c == ':')
             return 0;
-        buf[n++] = c == '.' ? '/' : c == '/' ? '.' : c == HARD_SPACE ? ' ' : c;
+        c = c == '.' ? '/' : c == '/' ? '.' : c == HARD_SPACE ? ' ' : c;
+#ifndef _WIN32
+        /* RISC OS scrive in Latin-1, i nomi dell'host sono UTF-8 */
+        unsigned char u = (unsigned char)c;
+        if (u >= 0x80) { buf[n++] = (char)(0xC0 | u >> 6); buf[n++] = (char)(0x80 | (u & 0x3F)); continue; }
+#endif
+        buf[n++] = c;
     }
     buf[n] = 0;
     if (strstr(buf, "..") || !root || !root[0]) return 0;
@@ -76,8 +82,19 @@ void hostdir_ro_name(const char *leaf, char *out, size_t size)
     const char *at = NULL;
     if (!parse_suffix(leaf, &a, &b, &at)) at = NULL;
     size_t n = 0;
-    for (const char *p = leaf; *p && p != at && n < size - 1; p++)
-        out[n++] = *p == '.' ? '/' : *p == ' ' ? HARD_SPACE : *p;
+    for (const char *p = leaf; *p && p != at && n < size - 1; p++) {
+        char c = *p;
+#ifndef _WIN32
+        /* UTF-8 -> Latin-1; quello che il Latin-1 non ha diventa '_' */
+        unsigned char u = (unsigned char)c;
+        if (u >= 0xC0 && (p[1] & 0xC0) == 0x80) {
+            uint32_t cp = u < 0xE0 ? (uint32_t)(u & 0x1F) : u < 0xF0 ? (uint32_t)(u & 0x0F) : (uint32_t)(u & 0x07);
+            while ((p[1] & 0xC0) == 0x80 && p + 1 != at) cp = cp << 6 | (uint32_t)(*++p & 0x3F);
+            c = cp <= 0xFF ? (char)cp : '_';
+        }
+#endif
+        out[n++] = c == '.' ? '/' : c == ' ' ? HARD_SPACE : c;
+    }
     out[n] = 0;
 }
 

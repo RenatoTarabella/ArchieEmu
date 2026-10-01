@@ -12,6 +12,14 @@ image, as a single 2 MB file, here:
 or start the emulator with:  archie.exe --rom path\to\ROM311
 The CMOS settings are saved next to the ROM (ROM311.cmos).
 
+HostFS: the "HostFS" folder next to archie.exe is a disc in RISC OS, with its
+own icon on the icon bar. Copy RISC OS software into it from Windows, or save
+into it from RISC OS: the files are shared both ways. File types are suffixes
+in the host names, as in RPCEmu: "Game,ff8" is Absolute, "Prog,ffb" is BASIC.
+A "!System" folder at the top of HostFS is registered when you open it (some
+software needs one). To unpack a floppy image into HostFS, with the right types,
+use tools/adfextract.py from the source code on GitHub.
+
 Floppy disc images (.adf, ADFS 800 KB) can go in the "ADF" folder. Insert one
 with Ctrl+F9 or by dropping the file on the window, or from the command line:
   archie.exe --floppy game.adf --floppy2 disc2.adf

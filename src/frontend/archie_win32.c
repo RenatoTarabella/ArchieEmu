@@ -461,7 +461,7 @@ static const char *find_file(const char *const *rel, size_t n, char *buf, size_t
 
 int main(int argc, char **argv)
 {
-    ArchieConfig cfg = { NULL, 4, NULL, { NULL, NULL }, 8 };
+    ArchieConfig cfg = { NULL, 4, NULL, { NULL, NULL }, 8, NULL };
     app.mhz = 8;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--rom") && i + 1 < argc) cfg.rom_path = argv[++i];

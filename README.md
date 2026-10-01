@@ -15,14 +15,14 @@ through interfaces. It runs in two flavours:
 
 **Windows** (64-bit), portable builds, just unzip and run (no installation):
 
-- [**ArchieEmu-BASIC-v1.0-win64.zip**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.0/ArchieEmu-BASIC-v1.0-win64.zip):
+- [**ArchieEmu-BASIC-v1.1-win64.zip**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.1/ArchieEmu-BASIC-v1.1-win64.zip):
   the BBC BASIC V machine, ready to use.
-- [**ArchieEmu-Archimedes-v1.0-win64.zip**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.0/ArchieEmu-Archimedes-v1.0-win64.zip):
+- [**ArchieEmu-Archimedes-v1.1-win64.zip**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.1/ArchieEmu-Archimedes-v1.1-win64.zip):
   the Archimedes; you need your own RISC OS 3.11 ROM (not included).
 
 **macOS** (Apple Silicon and Intel, macOS 11 or later), signed and notarized:
 
-- [**ArchieEmu-1.0-macOS.dmg**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.0/ArchieEmu-1.0-macOS.dmg):
+- [**ArchieEmu-1.1-macOS.dmg**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.1/ArchieEmu-1.1-macOS.dmg):
   both machines as native apps. The Archimedes asks for your RISC OS 3.11 ROM on
   first run and keeps it in `Documents/ArchieEmu/roms`.
 
@@ -208,6 +208,33 @@ which holds `!GenLib`, in :1; open both drive windows so the Filer sees
 
 `tools/mkadfs.py` builds 800 KB ADFS D images from a directory, a zip with
 RISC OS file types, or a Spark/Arc archive.
+
+### HostFS: a folder of the host as a RISC OS disc
+
+A folder of the PC or Mac appears in RISC OS as the **HostFS** filing system,
+with its own icon on the icon bar: files copied into the folder are immediately
+visible in RISC OS, and whatever RISC OS saves there is an ordinary host file.
+The folder is `HostFS` next to `archie.exe` on Windows, `Documents/ArchieEmu/HostFS`
+on the Mac, or any folder given with `--hostfs`.
+
+Names follow the RPCEmu convention, so folders prepared for RPCEmu work here too:
+the RISC OS `/` becomes `.` on the host, the file type is a `,xxx` suffix
+(`Game,ff8`, `Prog,ffb`; no suffix = Text), untyped files keep their load and
+exec addresses in `,llllllll-eeeeeeee`, and a hard space is a space.
+
+How it works, as on a real machine: an emulated expansion card (podule 0 at
+`&33C0000`) carries a ROM with the HostFS module, which RISC OS 3.11 finds and
+starts at boot (`*Podules` lists it). The module (`src/archie/hostfs_module.s`,
+assembled by `tools/gen_hostfs_module.py`) registers the filing system with
+FileSwitch and starts the icon bar task; each FileSwitch call executes a reserved
+SWI that the emulator serves in C (`src/archie/hostfs.c`).
+
+`tools/adfextract.py image.adf HostFS/Name` extracts an ADFS floppy image (L, D or
+E format) into a folder with the right names and types. Software that checks
+its original floppy (copy protection) still has to run from the `.adf`; many
+programs also need a `!System` folder with newer modules (e.g. the Shared C
+Library): put one at the top of the HostFS folder and the Filer registers it
+when the window opens.
 
 ## Next steps
 

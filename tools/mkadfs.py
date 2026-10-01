@@ -8,7 +8,9 @@ e date di RISC OS.
 Formato D (verificato sui dischi originali): mappa vecchia nei primi 512 byte
 (inizi e lunghezze delle zone libere in unita' da 256 byte, con somma di
 controllo), root "$" a &400 lunga &800, directory "Hugo" da 77 voci di 26 byte
-con byte di controllo calcolato come in FileCore (s.FileCore25).
+con byte di controllo calcolato come in FileCore (s.FileCore25). Ogni oggetto
+deve cominciare su un settore da 1 KB: ADFS rifiuta gli altri ("Bad
+parameters", che con la cache dei dischi si perde e blocca FileCore).
 
 Zip: il tipo arriva dal campo extra RISC OS ("AC" + "ARC0": load, exec, attr);
 senza, dal suffisso ",xxx" o dal nome. Spark: metodo 2 (memorizzato) e 127
@@ -26,7 +28,8 @@ import time
 import zipfile
 
 DISC_SIZE = 819200
-UNIT = 256
+UNIT = 256                    # unita' della mappa
+SECTOR_UNITS = 4              # i file si allocano a settori interi da 1 KB
 DIR_SIZE = 0x800
 MAX_ENTRIES = 77
 
@@ -363,7 +366,8 @@ def build(root, disc_name, warnings):
                 alloc(c, path + "/" + c.name.decode("latin-1"))
             else:
                 c.addr = nxt[0]
-                nxt[0] += max(1, units(len(c.data)))
+                sectors = max(1, -(-units(len(c.data)) // SECTOR_UNITS))
+                nxt[0] += sectors * SECTOR_UNITS
     alloc(root, "$")
     total = DISC_SIZE // UNIT
     if nxt[0] > total:

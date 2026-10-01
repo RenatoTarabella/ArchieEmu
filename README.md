@@ -11,6 +11,17 @@ through interfaces. It runs in two flavours:
   runs on the emulated ARM2, while the RISC OS calls it makes are handled in C,
   with a framebuffer that goes up to 32-bit truecolour.
 
+## Download
+
+Portable Windows 64-bit builds, just unzip and run (no installation):
+
+- [**ArchieEmu-BASIC-v1.0-win64.zip**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.0/ArchieEmu-BASIC-v1.0-win64.zip):
+  the BBC BASIC V machine, ready to use.
+- [**ArchieEmu-Archimedes-v1.0-win64.zip**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.0/ArchieEmu-Archimedes-v1.0-win64.zip):
+  the Archimedes; you need your own RISC OS 3.11 ROM (not included).
+
+All releases: [Releases page](https://github.com/RenatoTarabella/ArchieEmu/releases).
+
 | RISC OS 3.11 desktop | Ray tracer in BBC BASIC + ARM assembler |
 |---|---|
 | ![RISC OS 3.11 desktop](docs/desktop.png) | ![Ray tracer, MODE 28, 256 colours](docs/raytracer-mode28.png) |

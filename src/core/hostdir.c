@@ -12,6 +12,7 @@
 #include <direct.h>
 #include <sys/utime.h>
 #define strncasecmp _strnicmp
+#define strcasecmp _stricmp
 #define utimbuf _utimbuf
 #define utime _utime
 #else
@@ -145,6 +146,11 @@ int hostdir_stat(HostObject *o)
         o->type = (a >> 20) == 0xFFF ? (a >> 8) & 0xFFF : 0;
     } else {
         o->type = o->kind == HOSTOBJ_DIR ? HOSTDIR_TYPE_DIR : kind == 1 ? a : HOSTDIR_TYPE_TEXT;
+        /* immagini di dischetti senza suffisso: tipo &FCE, il doppio clic le inserisce */
+        const char *dot = strrchr(leaf_of(o->path), '.');
+        if (o->kind == HOSTOBJ_FILE && !kind && dot &&
+            (!strcasecmp(dot, ".adf") || !strcasecmp(dot, ".adl") || !strcasecmp(dot, ".hfe")))
+            o->type = 0xFCE;
     }
     return 1;
 }

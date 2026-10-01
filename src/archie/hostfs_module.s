@@ -15,6 +15,7 @@
         .equ    XOS_Module,     0x2001E
         .equ    XOS_FSControl,  0x20029
         .equ    XOS_CLI,        0x20005
+        .equ    XOS_SetVarVal,  0x20024
         .equ    OS_Exit,        0x11
         .equ    XWimp_Initialise, 0x600C0
         .equ    XWimp_CreateIcon, 0x600C2
@@ -55,9 +56,13 @@ commands:
         .asciz  "HostFS"
         .align  2
         .word   cmd_select, 0, 0, help_select
+        .asciz  "HostFS_Insert"
+        .align  2
+        .word   cmd_insert, 0x00010001, 0, help_insert
         .word   0
 help_desktop: .asciz "Desktop_HostFS starts the HostFS icon on the icon bar. Do not use *Desktop_HostFS, use *Desktop instead.\r"
 help_select:  .asciz "*HostFS selects HostFS, the folder of the host computer, as the current filing system.\r"
+help_insert:  .asciz "*HostFS_Insert puts a floppy image (.adf or .hfe) stored on HostFS in drive 0 and opens it. Double-clicking a Floppy file (type &FCE) does the same.\rSyntax: *HostFS_Insert <file>"
         .align  2
 
 cmd_desktop:                                    @ avvia il task (modulo come applicazione)
@@ -75,6 +80,40 @@ cmd_select:
         svc     #XOS_FSControl
         ldmfd   sp!, {pc}
 
+cmd_insert:                                     @ R0 = nome del file
+        stmfd   sp!, {r12, lr}
+        ldr     r12, [r12]
+        svc     #TRAP + 7                       @ l'emulatore inserisce il disco
+        ldmfdvs sp!, {r12, pc}
+        adr     r0, open_floppy
+        svc     #XOS_CLI                        @ apre la finestra (fuori dal desktop non serve)
+        cmn     r0, #0                          @ V spento
+        ldmfd   sp!, {r12, pc}
+open_floppy: .asciz "Filer_OpenDir ADFS::0.$"
+        .align  2
+
+@ tipo &FCE "Floppy": il doppio clic inserisce il dischetto
+setvars:
+        stmfd   sp!, {r0-r4, lr}
+        adr     r0, var_type
+        adr     r1, val_type
+        mov     r2, #6
+        mov     r3, #0
+        mov     r4, #4                          @ stringa letterale
+        svc     #XOS_SetVarVal
+        adr     r0, var_run
+        adr     r1, val_run
+        mov     r2, #17
+        mov     r3, #0
+        mov     r4, #4
+        svc     #XOS_SetVarVal
+        ldmfd   sp!, {r0-r4, pc}
+var_type: .asciz "File$Type_FCE"
+val_type: .asciz "Floppy"
+var_run:  .asciz "Alias$@RunType_FCE"
+val_run:  .asciz "HostFS_Insert %*0"
+        .align  2
+
 @ ------------------------------------------------------------ inizio e fine
 init:
         stmfd   sp!, {r7-r11, lr}
@@ -87,6 +126,8 @@ init:
         mov     r0, #0
         str     r0, [r12, #WS_TASK]
         bl      declare
+        bl      setvars
+        cmn     r0, #0                          @ le variabili non sono essenziali
         ldmfd   sp!, {r7-r11, pc}
 
 final:

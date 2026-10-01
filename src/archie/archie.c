@@ -322,6 +322,11 @@ static uint8_t *load_file(const char *path, uint32_t *size)
     return d;
 }
 
+static int insert_floppy(void *ctx, int drive, const char *path)
+{
+    return fdc_insert(&((Archie *)ctx)->fdc, drive, path);
+}
+
 /* le SWI riservate del modulo HostFS: il lavoro lo fa l'host */
 static int archie_swi(Arm2 *cpu, uint32_t comment, void *user)
 {
@@ -403,6 +408,8 @@ int archie_create(Archie *a, const ArchieConfig *cfg, char *err, size_t errsize)
             return 0;
         }
         arc_hostfs_init(a->hostfs, cfg->hostfs_dir, &a->memc);
+        a->hostfs->insert = insert_floppy;
+        a->hostfs->insert_ctx = a;
         a->cpu.swi_hook = archie_swi;
         a->cpu.swi_user = a;
     }

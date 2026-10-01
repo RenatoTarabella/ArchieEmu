@@ -28,11 +28,15 @@ typedef struct ArcHostFS {
     void  *fp[ARC_HOSTFS_FILES];        /* FILE* aperti; l'indice + 1 e' la maniglia */
     char   path[ARC_HOSTFS_FILES][600];
     struct Memc *memc;
+    /* *HostFS_Insert: mette un'immagine dell'host nell'unita' (0 = non riconosciuta) */
+    int  (*insert)(void *ctx, int drive, const char *path);
+    void  *insert_ctx;
 } ArcHostFS;
 
 void arc_hostfs_init(ArcHostFS *h, const char *root, struct Memc *memc);
 void arc_hostfs_close_all(ArcHostFS *h);
-/* esegue l'ingresso 'entry' (0 Open, 1 GetBytes, 2 PutBytes, 3 Args, 4 Close, 5 File, 6 Func) */
+/* esegue l'ingresso 'entry' (0 Open, 1 GetBytes, 2 PutBytes, 3 Args, 4 Close, 5 File, 6 Func,
+   7 *HostFS_Insert con R0 -> nome del file) */
 void arc_hostfs_entry(ArcHostFS *h, Arm2 *cpu, int entry);
 
 #endif

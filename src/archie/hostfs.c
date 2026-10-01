@@ -518,9 +518,35 @@ void arc_hostfs_entry(ArcHostFS *h, Arm2 *cpu, int entry)
                 entry, R(0), R(1), R(2), R(3), R(4), R(5), (cpu->r[15] & ARM_V) ? "  ERRORE" : "");
 }
 
+/* *HostFS_Insert: il nome arriva come lo da' il Filer ("HostFS:$.dir.Gioco/hfe",
+   anche "HostFS::HostFS.$..."), si cerca il file e lo si mette nell'unita' 0 */
+static void insert_disc(ArcHostFS *h, Arm2 *cpu)
+{
+    char ro[256], base[600];
+    read_str(h, R(0), ro, sizeof ro);
+    const char *p = strchr(ro, ' ') ? NULL : ro;
+    if (p) {
+        const char *colon = strrchr(p, ':');
+        if (colon) p = colon + 1;
+        const char *dollar = strstr(p, "$.");
+        p = dollar ? dollar + 2 : p;
+    }
+    HostObject o;
+    if (!p || !hostdir_map(h->root, p, base, sizeof base) || !hostdir_find(base, &o) || o.kind != HOSTOBJ_FILE) {
+        error(h, cpu, ERR(0xD6), "HostFS_Insert: the disc image must be a file on HostFS");
+        return;
+    }
+    if (!h->insert || !h->insert(h->insert_ctx, 0, o.path)) {
+        error(h, cpu, ERR(0xC7), "Not a floppy image (.adf, .adl or .hfe)");
+        return;
+    }
+    ok(cpu);
+}
+
 static void arc_hostfs_dispatch(ArcHostFS *h, Arm2 *cpu, int entry)
 {
     switch (entry) {
+    case 7: insert_disc(h, cpu); break;
     case 0: fs_open(h, cpu); break;
     case 1: fs_getbytes(h, cpu); break;
     case 2: fs_putbytes(h, cpu); break;

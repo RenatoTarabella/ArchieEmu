@@ -218,6 +218,19 @@ static void insert_floppy(int drive, const char *path)
     update_title();
 }
 
+/* dischetti cambiati da RISC OS (*HostFS_Insert): il titolo li segue */
+static void sync_floppy_names(void)
+{
+    for (int d = 0; d < 2; d++) {
+        const FdcDrive *fd = &app.a.fdc.drive[d];
+        const char *name = fd->image ? base_name(fd->path) : "";
+        if (strcmp(name, app.floppy_name[d])) {
+            snprintf(app.floppy_name[d], sizeof app.floppy_name[d], "%s", name);
+            update_title();
+        }
+    }
+}
+
 static void eject_floppy(int drive)
 {
     fdc_eject(&app.a.fdc, drive);
@@ -495,6 +508,7 @@ static void mouse_moved(NSEvent *e)
     keys_tick(&keys, now_ms());
     archie_run(&app.a, ARC_MS(1000 / FRAME_HZ));
     audio_pump(&app.a);
+    sync_floppy_names();
     view.needsDisplay = YES;
     app.next += 1.0 / FRAME_HZ;
     if (app.next < t - 0.1) app.next = t;                     /* recupera dopo una pausa */

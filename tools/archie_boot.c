@@ -150,6 +150,16 @@ static void on_exception(Arm2 *cpu, uint32_t vector, uint32_t link, void *user)
     /* per gli abort dei dati l'istruzione colpevole e' a R14-8 */
     if (trace_vectors && v != 6 && v != 7 && vec_count[v] <= 12)
         fprintf(stderr, "[%.3f ms] %s, R14=&%08X\n", (double)archie_now(&a) / 24000.0, vector_names[v], link);
+    /* istruzioni non definite fuori dalla ROM (quelle della ROM sono quasi
+       tutte del FPEmulator): l'istruzione e' a R14-4 */
+    static int undef_shown;
+    uint32_t at = (link & ARM_PC_MASK) - 4;
+    if (trace_vectors && v == 1 && at < 0x3800000u && undef_shown < 20) {
+        int ab = 0;
+        undef_shown++;
+        fprintf(stderr, "[%.3f ms] istruzione non definita &%08X a &%08X\n",
+                (double)archie_now(&a) / 24000.0, memc_read32(&a.memc, at, &ab), at);
+    }
 }
 
 /* Rapporto del POST di RISC OS 3: impulsi sul bit 0 del latch A; un

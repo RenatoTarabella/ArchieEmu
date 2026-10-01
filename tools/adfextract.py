@@ -1,12 +1,13 @@
 """
-adfextract.py - Estrae un'immagine floppy ADFS, uno zip RISC OS o un archivio
-Spark in una cartella dell'host, con i nomi e i tipi di RISC OS nella
-convenzione di HostFS/RPCEmu.
+adfextract.py - Estrae un'immagine floppy ADFS, un archivio RISC OS (zip,
+Spark/Arc, ArcFS) o un CD-ROM in una cartella dell'host, con i nomi e i tipi
+di RISC OS nella convenzione di HostFS/RPCEmu.
 
-    python tools/adfextract.py immagine.adf|archivio.zip|archivio.spk cartella [--list]
+    python tools/adfextract.py immagine.adf|archivio|cd.iso[.zip] cartella [--list] [--keep-archives]
 
 Esempio: tools/adfextract.py "Hopper 1.00.adf" HostFS/Hopper
-Zip e Spark si leggono con il codice di mkadfs.py (tipi dal campo extra RISC OS).
+Gli archivi si leggono con il codice di mkadfs.py, i CD con cdextract.py. Gli
+archivi trovati dentro (tipi &3FB e &DDC) diventano cartelle, come in SparkFS.
 
 Formati: L (640 KB, mappa vecchia, directory da &500), D (800 KB, mappa
 vecchia, directory da &800) ed E (800 KB, mappa nuova a frammenti). Le
@@ -194,28 +195,85 @@ def extract_tree(node, dest, listing, depth=0):
     return count
 
 
+def expand_archives(dest, warnings):
+    """Gli archivi dentro l'estrazione (",3fb" ArcFS, ",ddc" Spark, ",a91" e
+    ".zip" zip) diventano cartelle con
+    lo stesso nome, come li mostrerebbe SparkFS: cosi' i programmi partono
+    senza SparkFS. Quelli che non si aprono restano come sono."""
+    import mkadfs
+    count = 0
+    for dirpath, _dirs, files in os.walk(dest):
+        for f in files:
+            low = f.lower()
+            if low[-4:] in (",3fb", ",ddc", ",a91"):
+                cut = 4
+            elif low.endswith(".zip"):              # zip senza tipo (es. CD fatti su PC)
+                cut = 4
+            else:
+                continue
+            path = os.path.join(dirpath, f)
+            target = path[:-cut]
+            if os.path.exists(target):
+                continue
+            w = []
+            try:
+                tree = mkadfs.from_archive(path, w)
+            except Exception as e:              # archivio di un tipo che non sappiamo leggere
+                warnings.append("archivio non aperto, lasciato com'e': %s (%s)" % (f, e))
+                continue
+            if len(tree.children) == 1 and tree.children[0].is_dir and \
+                    tree.children[0].name.lower() == os.path.basename(target).encode("latin-1", "replace").lower():
+                tree = tree.children[0]          # l'archivio contiene gia' la cartella omonima
+            os.makedirs(target, exist_ok=True)
+            count += extract_tree(tree, target, False)
+            warnings.extend(w)
+            os.remove(path)
+    return count
+
+
+def extract_any(src, dest, listing=False, expand=True):
+    """immagine floppy, archivio o CD -> cartella; restituisce il numero di file"""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import mkadfs
+    import zipfile
+    warnings = []
+    low = src.lower()
+    head = open(src, "rb").read(16)
+    is_cd = low.endswith((".iso", ".bin", ".iso.zip", ".bincue.zip")) or head[:12] == b"\x00" + b"\xff" * 10 + b"\x00"
+    if not is_cd and head[:2] == b"PK":
+        names = [n.lower() for n in zipfile.ZipFile(src).namelist()]
+        is_cd = any(n.endswith((".iso", ".bin")) for n in names) and len(names) <= 3
+    if not listing:
+        os.makedirs(dest, exist_ok=True)
+    if is_cd:
+        import cdextract
+        n = cdextract.extract_cd(src, dest, listing)
+    elif head[:8] == b"Archive\0" or head[:1] == b"\x1a" or head[:2] == b"PK":
+        n = extract_tree(mkadfs.from_archive(src, warnings), dest or "", listing)
+    else:
+        img = open(src, "rb").read()
+        disc, root, size, max_entries = detect(img)
+        n = extract(disc, root, size, max_entries, dest or "", listing)
+    while expand and not listing:                # anche gli archivi dentro gli archivi
+        k = expand_archives(dest, warnings)
+        if not k:
+            break
+        n += k
+    for w in warnings:
+        print("attenzione:", w, file=sys.stderr)
+    return n
+
+
 def main():
-    ap = argparse.ArgumentParser(description="Estrae un'immagine ADFS in una cartella (per HostFS)")
+    ap = argparse.ArgumentParser(description="Estrae un'immagine floppy, un archivio o un CD RISC OS in una cartella (per HostFS)")
     ap.add_argument("immagine")
     ap.add_argument("cartella", nargs="?")
     ap.add_argument("--list", action="store_true", help="elenca soltanto")
+    ap.add_argument("--keep-archives", action="store_true", help="non aprire gli archivi ArcFS/Spark contenuti")
     a = ap.parse_args()
     if not a.list and not a.cartella:
         ap.error("serve la cartella di destinazione (o --list)")
-    img = open(a.immagine, "rb").read()
-    if not a.list:
-        os.makedirs(a.cartella, exist_ok=True)
-    if img[:2] == b"PK" or img[:1] == b"":
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import mkadfs
-        warnings = []
-        tree = mkadfs.from_zip(a.immagine, warnings) if img[:2] == b"PK" else mkadfs.from_spark(a.immagine, warnings)
-        for w in warnings:
-            print("attenzione:", w, file=sys.stderr)
-        n = extract_tree(tree, a.cartella or "", a.list)
-    else:
-        disc, root, size, max_entries = detect(img)
-        n = extract(disc, root, size, max_entries, a.cartella or "", a.list)
+    n = extract_any(a.immagine, a.cartella, a.list, not a.keep_archives)
     if not a.list:
         print("%s: %d file in %s" % (os.path.basename(a.immagine), n, a.cartella))
 

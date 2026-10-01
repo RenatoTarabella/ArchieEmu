@@ -13,8 +13,8 @@ deve cominciare su un settore da 1 KB: ADFS rifiuta gli altri ("Bad
 parameters", che con la cache dei dischi si perde e blocca FileCore).
 
 Zip: il tipo arriva dal campo extra RISC OS ("AC" + "ARC0": load, exec, attr);
-senza, dal suffisso ",xxx" o dal nome. Spark: metodo 2 (memorizzato) e 127
-("compress", LZW di Unix), con controllo del CRC.
+senza, dal suffisso ",xxx" o dal nome. Spark/Arc e ArcFS: memorizzato, packed
+(RLE), crunched, squashed e compress (LZW), con controllo del CRC.
 """
 import argparse
 import os
@@ -274,6 +274,110 @@ def arc_crc(data):
     return crc
 
 
+def rle90(data):
+    """'packed' di Arc: &90 n ripete n-1 volte il byte precedente, &90 0 e' &90"""
+    out = bytearray()
+    last = 0
+    i, n = 0, len(data)
+    while i < n:
+        b = data[i]
+        i += 1
+        if b != 0x90:
+            out.append(b)
+            last = b
+        elif i < n:
+            c = data[i]
+            i += 1
+            if c == 0:
+                out.append(0x90)
+                last = 0x90
+            else:
+                out.extend(bytes([last]) * (c - 1))
+    return bytes(out)
+
+
+def arc_decompress(method, body, size, crc=None, maxbits=12):
+    """metodi di Arc, Spark e ArcFS: 2 memorizzato, 3 packed (RLE), 8 crunched
+    (LZW + RLE), 9 squashed (LZW 13 bit), 127/255 compress (LZW). Il numero di
+    bit a volte e' il primo byte dei dati, a volte negli attributi (ArcFS):
+    si provano le varianti e vince quella col CRC giusto."""
+    if method == 2:
+        cands = [lambda: body]
+    elif method == 3:
+        cands = [lambda: rle90(body)]
+    elif method == 8:
+        cands = [lambda: rle90(lzw_uncompress(body, 1 << 30)),
+                 lambda: rle90(lzw_uncompress(bytes([maxbits]) + body, 1 << 30))]
+    elif method == 9:
+        cands = [lambda: lzw_uncompress(bytes([13]) + body, size),
+                 lambda: lzw_uncompress(body, size)]
+    elif method in (127, 255):
+        cands = [lambda: lzw_uncompress(body, size),
+                 lambda: lzw_uncompress(bytes([maxbits]) + body, size)]
+    else:
+        raise ValueError("metodo di compressione %d non gestito" % method)
+    first = None
+    for make in cands:
+        try:
+            data = make()[:size]
+        except (IndexError, ValueError):
+            continue
+        if first is None:
+            first = data
+        if len(data) == size and (crc is None or arc_crc(data) == crc):
+            return data, True
+    return (first or b""), False
+
+
+def from_arcfs(path, warnings):
+    """archivio ArcFS ("Archive\\0"): intestazione da 96 byte, poi voci da 36:
+    metodo (0 = fine cartella, 1 = cancellato), nome (11), lunghezza, load,
+    exec, attributi (bit 8-15 numero di bit, 16-31 CRC), lunghezza compressa,
+    info (bit 31 = cartella, altrimenti offset dei dati)"""
+    d = open(path, "rb").read()
+    if d[:8] != b"Archive\0":
+        raise ValueError("non e' un archivio ArcFS")
+    header_len, data_start = struct.unpack_from("<II", d, 8)
+    root = Node(b"$", True)
+    stack = [root]
+    p = 96
+    for _ in range(header_len // 36):
+        if p + 36 > len(d):
+            break
+        method = d[p]
+        name = d[p + 1:p + 12].split(b"\0")[0]
+        size, load, exe, attr, csize, info = struct.unpack_from("<IIIIII", d, p + 12)
+        p += 36
+        if method == 0:
+            if len(stack) > 1:
+                stack.pop()
+            continue
+        if method == 1:
+            continue
+        if info & 0x80000000:
+            stack.append(stack[-1].child_dir(name))
+            continue
+        off = data_start + (info & 0x7FFFFFFF)
+        body = d[off:off + csize]
+        crc = attr >> 16
+        data, ok = arc_decompress(method & 0x7F if method != 0xFF else 255, body, size, crc, (attr >> 8) & 0xFF or 12)
+        if not ok:
+            warnings.append("CRC sbagliato o metodo sconosciuto, saltato: %s" % name.decode("latin-1"))
+            continue
+        stack[-1].children.append(Node(name, data=data, load=load, exec_=exe, attr=attr & 0xFF or 3))
+    return root
+
+
+def from_archive(path, warnings):
+    """zip, Spark/Arc o ArcFS, riconosciuti dai primi byte"""
+    head = open(path, "rb").read(8)
+    if head == b"Archive\0":
+        return from_arcfs(path, warnings)
+    if head[:1] == b"\x1a":
+        return from_spark(path, warnings)
+    return from_zip(path, warnings)
+
+
 def from_spark(path, warnings):
     d = open(path, "rb").read()
     root = Node(b"$", True)
@@ -298,13 +402,8 @@ def from_spark(path, warnings):
             if (load >> 8) & 0xFFFFF == 0xFFDDC:          # cartella: archivio annidato
                 walk(node.child_dir(name), p + hdr, p + hdr + csize)
             else:
-                if method == 2:
-                    data = body
-                elif method == 127:
-                    data = lzw_uncompress(body, size)
-                else:
-                    raise ValueError("metodo Spark %d non gestito (%s)" % (method, name))
-                if arc_crc(data) != crc:
+                data, good = arc_decompress(method, body, size, crc)
+                if not good:
                     # archivio danneggiato: meglio un disco con un file in meno
                     warnings.append("CRC sbagliato (archivio danneggiato), saltato: %s" % name.decode("latin-1"))
                     p += hdr + csize
@@ -457,8 +556,7 @@ def main():
     if os.path.isdir(src):
         root = from_directory(src)
     else:
-        head = open(src, "rb").read(4)
-        root = from_spark(src, warnings) if head[:1] == b"\x1a" else from_zip(src, warnings)
+        root = from_archive(src, warnings)
     if a.root:
         for part in a.root.encode("latin-1").split(b"/"):
             root = next(c for c in root.children if c.is_dir and c.name.lower() == part.lower())

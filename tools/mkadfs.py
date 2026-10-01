@@ -147,14 +147,19 @@ class _LenientZipInfo(zipfile.ZipInfo):
             pass
 
 
-def from_zip(path, warnings):
-    root = Node(b"$", True)
+def open_zip(path):
+    """zipfile.ZipFile che tollera i campi extra RISC OS troncati"""
     saved = zipfile.ZipInfo
     zipfile.ZipInfo = _LenientZipInfo
     try:
-        z = zipfile.ZipFile(path)
+        return zipfile.ZipFile(path)
     finally:
         zipfile.ZipInfo = saved
+
+
+def from_zip(path, warnings):
+    root = Node(b"$", True)
+    z = open_zip(path)
     # Implode (metodo 6) e altri metodi antichi: Python non li legge, 7-Zip si'.
     # Dallo zip si prendono comunque i tipi RISC OS dei campi extra.
     extracted = None

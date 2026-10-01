@@ -5,7 +5,7 @@ una per disco, con nomi puliti; i titoli che esistono solo come archivio (zip,
 Spark, ArcFS) vengono estratti. In RISC OS un doppio clic sul dischetto lo
 inserisce nell'unita' 0 e apre la finestra (tipo &FCE, *HostFS_Insert).
 
-    python tools/collection.py "X:/Archimedes archive" HostFS/Classics [titoli.txt]
+    python tools/collection.py "X:/Archimedes archive" HostFS/Classics [titoli.txt] [--section Apps]
 
 L'archivio e' quello di arcarc.nl (Games/<lettera>/<titolo>/...). Senza
 titoli.txt si usa la lista qui sotto; nel file, un titolo per riga
@@ -107,6 +107,19 @@ def badness(name):
     return score, len(n)
 
 
+ACCESSORY = ("module", "demo", "docs", "manual", "example", "translation", "viewer", "patch",
+             "support", "update", "extra", "source", "fonts", "utilities", "tutorial", "help")
+
+
+def archive_rank(name):
+    """il programma vero prima degli accessori; fra le versioni la piu' vecchia
+    (piu' probabile che giri su RISC OS 3.11)"""
+    n = name.lower()
+    extra = 30 * sum(1 for w in ACCESSORY if w in n)
+    key = [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", n)]
+    return (badness(name)[0] + extra, key)
+
+
 def clean(s):
     """nome della cartella: senza [varianti] e (note), "X, The" -> "The X",
     al massimo 40 caratteri (il Filer di RISC OS 3.11 non regge nomi lunghi)"""
@@ -159,11 +172,17 @@ def pick_images(folder):
 
 
 def main():
-    if len(sys.argv) < 3:
+    args = sys.argv[1:]
+    section = "Games"
+    if "--section" in args:
+        i = args.index("--section")
+        section = args[i + 1]
+        del args[i:i + 2]
+    if len(args) < 2:
         sys.exit(__doc__)
-    games = os.path.join(sys.argv[1], "Games")
-    dest = sys.argv[2]
-    titles = [t.strip() for t in (open(sys.argv[3], encoding="utf-8").read() if len(sys.argv) > 3 else CLASSICS).splitlines()]
+    games = os.path.join(args[0], section)
+    dest = args[1]
+    titles = [t.strip() for t in (open(args[2], encoding="utf-8").read() if len(args) > 2 else CLASSICS).splitlines()]
     titles = [t for t in titles if t]
     os.makedirs(dest, exist_ok=True)
     for entry in titles:
@@ -178,7 +197,8 @@ def main():
             # niente dischetti: l'archivio zip/Spark/ArcFS, estratto (versione da disco fisso)
             arcs = sorted((os.path.join(r, f) for r, _d, fs in os.walk(folder) for f in fs
                            if f.lower().endswith((".zip", ".arc", ".spk")) and not f.lower().endswith((".iso.zip", ".bincue.zip"))),
-                          key=lambda x: badness(os.path.basename(x)))
+                          key=lambda x: (os.path.relpath(x, folder).count(os.sep),     # prima quelli in cima
+                                         archive_rank(os.path.basename(x))))
             if not arcs:
                 print("nessun dischetto ne' archivio (solo CD):", os.path.basename(folder))
                 continue

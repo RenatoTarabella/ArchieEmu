@@ -241,7 +241,7 @@ def extract_any(src, dest, listing=False, expand=True):
     head = open(src, "rb").read(16)
     is_cd = low.endswith((".iso", ".bin", ".iso.zip", ".bincue.zip")) or head[:12] == b"\x00" + b"\xff" * 10 + b"\x00"
     if not is_cd and head[:2] == b"PK":
-        names = [n.lower() for n in zipfile.ZipFile(src).namelist()]
+        names = [n.lower() for n in mkadfs.open_zip(src).namelist()]
         is_cd = any(n.endswith((".iso", ".bin")) for n in names) and len(names) <= 3
     if not listing:
         os.makedirs(dest, exist_ok=True)

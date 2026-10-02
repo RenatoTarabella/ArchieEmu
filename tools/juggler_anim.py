@@ -2,13 +2,17 @@
 """
 juggler_anim.py - Genera le 24 scene di un'animazione del Juggler.
 
-Le scene originali dell'animazione di Eric Graham (1986-87) sono perse:
-questa e' una ricostruzione procedurale nello stesso spirito, a partire
-dalla geometria e dalla telecamera di robot.dat. Come nell'originale il robot
-sta fermo sul posto (piedi dove li mette robot.dat; piega le ginocchia
-solo quando riceve un pallone) e fa giocoleria a cascata con tre palloni a specchio:
-un lancio ogni 4 fotogrammi, mani alternate, 8 fotogrammi in volo e 4 in
-mano.
+Le scene originali dell'animazione di Eric Graham (1986-87) sono perse.
+I tempi e il percorso dei palloni sono misurati sui 24 fotogrammi
+originali (movie.data, juggler.avi di Ernie Wright): uno "shower", ogni
+pallone fa un giro di 72 fotogrammi - lancio alto sopra la testa da una
+mano all'altra in 47 fotogrammi (apice a meta'), poi un passaggio basso
+davanti al petto, l'altra mano lo prende, lo porta giu' e lo rilancia.
+I tre palloni sono sfasati di 24 fotogrammi, quindi la scena si ripete
+ogni 24: da un lancio alto al successivo. Geometria e telecamera sono
+quelle di robot.dat (la telecamera dell'animazione originale e' diversa e
+non e' stata ricavata). Il robot sta fermo e piega le ginocchia solo
+quando una mano riceve un pallone.
 
 Uso: juggler_anim.py cartella_di_uscita   (scrive j00.dat ... j23.dat)
 """
@@ -16,10 +20,15 @@ import math
 import os
 import sys
 
-N = 24                     # fotogrammi
-G = 0.25                   # gravita' in unita'/fotogramma^2
-BALL_X = -1.2              # piano dei palloni, davanti al corpo
-CATCH_Y, THROW_Y, HAND_Z = 2.1, 1.3, 4.8   # centro del pallone in mano
+N = 24                     # fotogrammi della scena (un terzo del giro)
+CYCLE = 72                 # giro di un pallone
+T = [-0.9, -2.1, 5.0]      # lancio alto (mano -1, a destra sullo schermo)
+C = [-0.9, 1.9, 5.0]       # presa del lancio alto (mano +1)
+M = [-1.3, -0.5, 5.6]      # presa del passaggio basso (mano -1)
+APEX = 2.4                 # altezza del lancio alto sopra T
+HAND = 0.7                 # dal centro del pallone alla mano
+# fasi del giro (fotogrammi): volo alto, mano +1, passaggio, mano -1
+T_HIGH, T_HOLD1, T_PASS, T_HOLD2 = 47, 50, 62, 72
 
 
 def lerp(a, b, t):
@@ -41,57 +50,74 @@ def ik(root, end, l1, l2, pole):
     return [root[k] + u[k] * a + p[k] * h for k in range(3)]
 
 
-def ball_and_hand(f, side):
-    """Pallone tenuto dalla mano side (+1 sinistra, -1 destra) al
-    fotogramma f, o None, e posizione della mano.
-    La destra lancia a 0, 8, 16 e prende a 4, 12, 20; la sinistra lancia
-    a 4, 12, 20 e prende a 0, 8, 16."""
-    c = (f - (4 if side < 0 else 0)) % 8      # 0 = presa, 4 = lancio
-    if c <= 4:                                 # in mano: dalla presa al lancio
-        s = c / 4.0
-        y = side * (CATCH_Y + (THROW_Y - CATCH_Y) * s)
-        z = HAND_Z - 0.4 * math.sin(math.pi * s)
-        ball = [BALL_X, y, z]
-        return ball, [BALL_X, y, z - 0.7]
-    s = (c - 4) / 4.0                          # vuota: dal lancio alla presa
-    y = side * (THROW_Y + (CATCH_Y - THROW_Y) * s)
-    return None, [BALL_X, y, HAND_Z - 0.7 + 0.25 * math.sin(math.pi * s)]
+def ball(t):
+    """Posizione di un pallone al tempo t del suo giro, e la mano che lo
+    tiene (+1, -1 o 0 se e' in volo)."""
+    t %= CYCLE
+    if t < T_HIGH:                                  # lancio alto, parabola
+        s = t / T_HIGH
+        p = lerp(T, C, s)
+        p[2] += 4 * APEX * s * (1 - s)
+        return p, 0
+    if t < T_HOLD1:                                 # presa: la mano cede un po'
+        s = (t - T_HIGH) / (T_HOLD1 - T_HIGH)
+        return [C[0], C[1], C[2] - 0.15 * math.sin(math.pi * s)], 1
+    if t < T_PASS:                                  # passaggio basso
+        s = (t - T_HOLD1) / (T_PASS - T_HOLD1)
+        p = lerp(C, M, s)
+        p[2] += 4 * 0.5 * s * (1 - s)
+        return p, 0
+    s = (t - T_PASS) / (T_HOLD2 - T_PASS)           # presa, giu' e rilancio
+    p = lerp(M, T, s)
+    p[2] -= 0.3 * math.sin(math.pi * s)
+    return p, -1
 
 
-def flying(f):
-    """Palloni in volo: lanciati da una mano verso l'altra, 8 fotogrammi."""
-    out = []
-    for k in range(6):                         # lanci a 0,4,...,20
-        t0 = 4 * k
-        t = (f - t0) % N
-        if 0 < t < 8:
-            side = -1 if t0 % 8 == 0 else 1    # chi lancia
-            y0, y1 = side * THROW_Y, -side * CATCH_Y
-            y = y0 + (y1 - y0) * t / 8.0
-            z = HAND_Z + (G * 8 / 2) * t - G * t * t / 2
-            out.append([BALL_X, y, z])
-    return out
+def hand(f, side):
+    """Mano side al fotogramma f: sotto il pallone che tiene, altrimenti
+    dal punto di rilascio verso la prossima presa."""
+    for k in range(3):
+        p, h = ball(f + N * k)
+        if h == side:
+            return [p[0], p[1], p[2] - HAND]
+    # mano vuota: rilascio e presa successiva nel giro, ripetuti ogni N
+    rel, cat = (T_HOLD1, T_HIGH + N) if side > 0 else (T_HOLD2, T_PASS + N)
+    t = f % N
+    while t < rel % N:
+        t += N
+    t0 = rel % N
+    while t < t0:
+        t += N
+    s = (t - t0) / (cat - rel)
+    a = ball(rel - 1e-6)[0]
+    b = ball(cat - N)[0]
+    p = lerp(a, b, s)
+    p[2] -= 0.25 * math.sin(math.pi * s) + HAND
+    return p
+
+
+def knees(f):
+    """Molleggio: le ginocchia si piegano alle prese e tornano dritte."""
+    dips = (-0.08, -0.06, -0.03, -0.01)
+    best = 0.0
+    for c in (T_HIGH % N, T_PASS % N):
+        d = (f - c) % N
+        if d < len(dips):
+            best = min(best, dips[d])
+    return best
 
 
 def frame(f):
     dx = 0.0
-    # le ginocchia si piegano solo quando una mano riceve un pallone
-    # (una presa ogni 4 fotogrammi), poi tornano dritte
-    bob = (-0.08, -0.03, 0.0, 0.0)[f % 4]
+    bob = knees(f)
     sp = []                                           # (colore, tipo, catena)
 
     def mv(p, z=0.0):
         return [p[0] + dx, p[1], p[2] + z]
 
-    # palloni: quelli in mano e quelli in volo
-    balls = []
-    hands = {}
-    for side in (1, -1):
-        b, h = ball_and_hand(f, side)
-        hands[side] = h
-        if b:
-            balls.append(b)
-    balls += flying(f)
+    # i tre palloni, sfasati di un terzo del giro
+    balls = [ball(f + N * k)[0] for k in range(3)]
+    hands = {side: hand(f, side) for side in (1, -1)}
     for b in balls:
         sp.append(("<.9,.9,.9>", 2, [(mv(b), 0.6)]))
     # testa, faccia, occhi, collo, corpo (come robot.dat, con il su e giu')

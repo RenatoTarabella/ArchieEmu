@@ -114,6 +114,20 @@ e' fermato li'. Scelta dell'utente: animazione procedurale.
   Piena risoluzione (MODE 13): 4824 s, 80 minuti su ARM2 a 8 MHz per tutti
   e 24 (l'Amiga impiegava circa un'ora per fotogramma); file di 1,5 MB.
 
+## Animazione: stato e prossimo passo
+
+L'animazione attuale ha tempi e percorso dei palloni misurati sui fotogrammi
+originali (shower, giro di 72 fotogrammi, tre palloni sfasati di 24), ma il
+corpo e' inventato e diverso dall'originale. Nell'originale (osservazione
+dell'utente) gli avambracci salgono al rimbalzo e tutto il corpo si piega
+verso il basso con le ginocchia, rialzandosi quando le due palle toccano le
+mani. Piano: l'utente rifara' l'animazione in Cinema 4D 2025 (oggetti
+nominati per le articolazioni: head, body_top/bottom, shoulder/elbow/hand,
+hip/knee/foot L/R, ball_1..3; video originale come sfondo) e uno script
+Python per C4D esportera' j00..j23.dat nel formato di Eric (catene come
+robot.dat; Y in alto -> Z in alto; telecamera -> osservatore, alt/az,
+focale: il "35" di robot.dat e' la focale in mm su pellicola 35 mm).
+
 ## Passi
 
 1. ~~**Riferimento sul PC**~~: fatto, vedi sopra.

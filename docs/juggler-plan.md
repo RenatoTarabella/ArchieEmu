@@ -90,6 +90,31 @@ RISC OS 3.11 (BASIC 1.05), da HostFS: `*DIR HostFS:$` e `CHAIN "Juggler"`.
   tutto. Sull'Archimedes, passo 4: 16,9 s (10,8 di ray tracing).
 - `BASIC: IF t THEN` con t reale piccolo vale falso (troncato a 0): usare `t>0`.
 
+## Passo 3 fatto: animazione (ricostruzione procedurale)
+
+Le 24 scene originali sono perse (Eric le generava con un suo programma);
+i fotogrammi originali esistono (`movie.data`, `media/juggler.avi`) ma
+hanno una telecamera diversa da robot.dat (quasi orizzontale, in diagonale
+sugli scacchi, focale ~25-28) e il robot cammina: il tentativo di
+ricavare la telecamera dagli scacchi e' arrivato al 71-74% dei pixel e si
+e' fermato li'. Scelta dell'utente: animazione procedurale.
+
+- `tools/juggler_anim.py` -> `disc/Scenes/Anim/j00..j23.dat`: geometria di
+  robot.dat; cascata a 3 palloni (lancio ogni 4 fotogrammi, 8 in volo, 4
+  in mano, apice z=6,8 come robot.dat); mani che seguono i palloni, gomiti
+  e ginocchia in IK; passo con piede d'appoggio fermo a terra; tutto (con
+  telecamera e lampada) avanza di 6 unita' in 24 fotogrammi, spostato a
+  x=30 perche' gli scacchi siano periodici (gingham() non lo e' vicino
+  agli assi).
+- Nel programma: scena `anim` (solo 256 colori), palette scelta sul primo
+  fotogramma, fotogrammi in memoria come pixel e salvati in un file
+  (header JUGA, modo, passo, larghezza, altezza, 24, palette, pixel);
+  scena `play` per rivederli. Player: LDM/STM a 8 registri per MODE 13 a
+  passo 1, altrimenti copia con ingrandimento. Tasti 1-9 = velocita'.
+- Passo 4 sull'Archimedes: 24 fotogrammi in ~7 minuti, riproduzione ok.
+  Piena risoluzione (MODE 13): 4824 s, 80 minuti su ARM2 a 8 MHz per tutti
+  e 24 (l'Amiga impiegava circa un'ora per fotogramma); file di 1,5 MB.
+
 ## Passi
 
 1. ~~**Riferimento sul PC**~~: fatto, vedi sopra.
@@ -106,7 +131,7 @@ RISC OS 3.11 (BASIC 1.05), da HostFS: `*DIR HostFS:$` e `CHAIN "Juggler"`.
      truecolor 640x480; sull'Archimedes MODE 13, 15, 28 a 256 colori con
      palette ottimizzata (16 registri base del VIDC1) e dithering
      Floyd-Steinberg; tempo di rendering a 8 MHz misurato (--stats).
-3. **Animazione**: i fotogrammi del Juggler (palloni in volo, braccia), poi
+3. ~~**Animazione**~~ (fatta, procedurale, vedi sopra): i fotogrammi del Juggler (palloni in volo, braccia), poi
    riproduzione come la demo originale da 24 fotogrammi.
 4. **Dopo**: palette diversa per ogni riga (FIQ che riscrive i 16 registri del
    VIDC a ogni riga, il "copper" dell'Archimedes). Serve prima nell'emulatore la

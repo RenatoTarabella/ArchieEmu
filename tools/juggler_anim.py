@@ -73,7 +73,7 @@ def ball(t):
     return p, -1
 
 
-def hand(f, side):
+def hand_at(f, side):
     """Mano side al fotogramma f: sotto il pallone che tiene, altrimenti
     dal punto di rilascio verso la prossima presa."""
     for k in range(3):
@@ -117,7 +117,7 @@ def frame(f):
 
     # i tre palloni, sfasati di un terzo del giro
     balls = [ball(f + N * k)[0] for k in range(3)]
-    hands = {side: hand(f, side) for side in (1, -1)}
+    hands = {side: hand_at(f, side) for side in (1, -1)}
     for b in balls:
         sp.append(("<.9,.9,.9>", 2, [(mv(b), 0.6)]))
     # testa, faccia, occhi, collo, corpo (come robot.dat, con il su e giu')

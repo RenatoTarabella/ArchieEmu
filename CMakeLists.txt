@@ -98,6 +98,18 @@ target_link_libraries(archie_boot archiecore)
 add_executable(romdis tools/romdis.c)
 target_link_libraries(romdis armcore)
 
+# Riferimento sul PC per il Juggler di Eric Graham (rt1.c in double e in float)
+add_executable(juggler_ref tools/juggler_ref.c src/frontend/png.c)
+add_executable(juggler_ref_f tools/juggler_ref.c src/frontend/png.c)
+target_compile_definitions(juggler_ref_f PRIVATE JUGGLER_FLOAT)
+if(MSVC)
+    # in float le costanti double di rt1.c troncano di proposito
+    target_compile_options(juggler_ref_f PRIVATE /wd4244 /wd4305)
+endif()
+foreach(t juggler_ref juggler_ref_f)
+    target_include_directories(${t} PRIVATE src/frontend)
+endforeach()
+
 # Finestra della macchina Archimedes
 if(WIN32)
     add_executable(archie WIN32 src/frontend/archie_win32.c src/frontend/archie_keys.c res/armwin.rc)

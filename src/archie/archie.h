@@ -81,6 +81,7 @@ typedef struct Archie {
 int  archie_create(Archie *a, const ArchieConfig *cfg, char *err, size_t errsize);
 void archie_destroy(Archie *a);
 void archie_reset(Archie *a);
+int  archie_set_ram(Archie *a, uint32_t mb);   /* 1, 2 o 4 MB, poi reset */
 
 /* Esegue la macchina per 'duration' unita' di tempo emulato. */
 void archie_run(Archie *a, ArcTime duration);

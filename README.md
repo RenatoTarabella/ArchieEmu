@@ -188,7 +188,7 @@ types on the emulated keyboard.
   (Elite's copy protection relies on this).
 
 The emulator's commands are in the window's menu bar, on Windows as on the Mac:
-**Disc** (insert in :0/:1, eject), **Machine** (Turbo, Sound, Reset, Quit) and
+**Disc** (insert in :0/:1, eject), **Machine** (Turbo, Sound, RAM 1/2/4 MB, Reset, Quit) and
 **Mouse** (right button as Menu, for mice without a middle button; also
 `--right-menu`). No key is taken away from RISC OS: Ctrl+F12 (task window) and
 Ctrl+Shift+F12 (shutdown) work as on the real machine, and **Ctrl+Break**

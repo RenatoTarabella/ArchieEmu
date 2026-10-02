@@ -460,6 +460,21 @@ static void mouse_moved(NSEvent *e)
 - (void)toggleSound:(id)s { (void)s; audio.muted = !audio.muted; }
 - (void)releaseMouse:(id)s { (void)s; capture_mouse(0); }
 - (void)resetMachine:(id)s { (void)s; archie_reset(&app.a); }
+- (void)setRam:(NSMenuItem *)item
+{
+    uint32_t mb = (uint32_t)item.tag;
+    if (mb == app.a.ram_size >> 20) return;
+    capture_mouse(0);
+    NSAlert *al = [NSAlert new];
+    al.messageText = @"Changing the RAM restarts the machine.";
+    [al addButtonWithTitle:@"Restart"];
+    [al addButtonWithTitle:@"Cancel"];
+    if ([al runModal] != NSAlertFirstButtonReturn) return;
+    archie_set_ram(&app.a, mb);
+    for (NSMenuItem *i in item.menu.itemArray)
+        if (i.action == @selector(setRam:))
+            i.state = i.tag == (NSInteger)mb ? NSControlStateValueOn : NSControlStateValueOff;
+}
 - (void)toggleRightMenu:(NSMenuItem *)item
 {
     app.right_menu = !app.right_menu;
@@ -601,6 +616,13 @@ static void build_menu(void)
     [m addItemWithTitle:@"Release Mouse" action:@selector(releaseMouse:) keyEquivalent:@"\e"];
     NSMenuItem *rm = [m addItemWithTitle:@"Right Button Is Menu" action:@selector(toggleRightMenu:) keyEquivalent:@""];
     rm.state = app.right_menu ? NSControlStateValueOn : NSControlStateValueOff;
+    [m addItem:NSMenuItem.separatorItem];
+    for (int mb = 1; mb <= 4; mb *= 2) {
+        NSString *t = mb == 1 ? @"RAM 1 MB (A3000)" : [NSString stringWithFormat:@"RAM %d MB", mb];
+        NSMenuItem *r = [m addItemWithTitle:t action:@selector(setRam:) keyEquivalent:@""];
+        r.tag = mb;
+        r.state = (app.a.ram_size >> 20) == (uint32_t)mb ? NSControlStateValueOn : NSControlStateValueOff;
+    }
     [m addItem:NSMenuItem.separatorItem];
     NSMenuItem *rst = [m addItemWithTitle:@"Reset" action:@selector(resetMachine:) keyEquivalent:@"r"];
     rst.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;

@@ -332,7 +332,8 @@ static void choose_floppy(int drive)
 }
 
 /* barra dei menu, come sul Mac */
-enum { CMD_INSERT0 = 100, CMD_INSERT1, CMD_EJECT0, CMD_EJECT1, CMD_TURBO, CMD_SOUND, CMD_RESET, CMD_RIGHT_MENU, CMD_QUIT };
+enum { CMD_INSERT0 = 100, CMD_INSERT1, CMD_EJECT0, CMD_EJECT1, CMD_TURBO, CMD_SOUND, CMD_RESET, CMD_RIGHT_MENU, CMD_QUIT,
+       CMD_RAM1, CMD_RAM2, CMD_RAM4 };
 
 static HMENU build_menu(void)
 {
@@ -344,6 +345,10 @@ static HMENU build_menu(void)
     AppendMenuA(disc, MF_STRING, CMD_EJECT1, "Eject :1");
     AppendMenuA(mach, MF_STRING, CMD_TURBO, "Turbo");
     AppendMenuA(mach, MF_STRING, CMD_SOUND, "Sound");
+    AppendMenuA(mach, MF_SEPARATOR, 0, NULL);
+    AppendMenuA(mach, MF_STRING, CMD_RAM1, "RAM 1 MB (A3000)");
+    AppendMenuA(mach, MF_STRING, CMD_RAM2, "RAM 2 MB");
+    AppendMenuA(mach, MF_STRING, CMD_RAM4, "RAM 4 MB");
     AppendMenuA(mach, MF_SEPARATOR, 0, NULL);
     AppendMenuA(mach, MF_STRING, CMD_RESET, "Reset\tCtrl+Break");
     AppendMenuA(mach, MF_SEPARATOR, 0, NULL);
@@ -372,6 +377,14 @@ static void menu_command(int id)
         break;
     case CMD_SOUND: audio.muted = !audio.muted; break;
     case CMD_RESET: archie_reset(&app.a); break;
+    case CMD_RAM1: case CMD_RAM2: case CMD_RAM4: {
+        uint32_t mb = id == CMD_RAM1 ? 1 : id == CMD_RAM2 ? 2 : 4;
+        if (mb != app.a.ram_size >> 20 &&
+            MessageBoxA(app.hwnd, "Changing the RAM restarts the machine. Continue?", "Archimedes",
+                        MB_OKCANCEL | MB_ICONQUESTION) == IDOK)
+            archie_set_ram(&app.a, mb);
+        break;
+    }
     case CMD_RIGHT_MENU: app.right_menu = !app.right_menu; break;
     case CMD_QUIT: DestroyWindow(app.hwnd); break;
     default: break;
@@ -389,6 +402,9 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         CheckMenuItem(m, CMD_TURBO, app.turbo ? MF_CHECKED : MF_UNCHECKED);
         CheckMenuItem(m, CMD_SOUND, audio.muted ? MF_UNCHECKED : MF_CHECKED);
         CheckMenuItem(m, CMD_RIGHT_MENU, app.right_menu ? MF_CHECKED : MF_UNCHECKED);
+        CheckMenuItem(m, CMD_RAM1, app.a.ram_size == 1u << 20 ? MF_CHECKED : MF_UNCHECKED);
+        CheckMenuItem(m, CMD_RAM2, app.a.ram_size == 2u << 20 ? MF_CHECKED : MF_UNCHECKED);
+        CheckMenuItem(m, CMD_RAM4, app.a.ram_size == 4u << 20 ? MF_CHECKED : MF_UNCHECKED);
         EnableMenuItem(m, CMD_EJECT0, app.a.fdc.drive[0].image ? MF_ENABLED : MF_GRAYED);
         EnableMenuItem(m, CMD_EJECT1, app.a.fdc.drive[1].image ? MF_ENABLED : MF_GRAYED);
         return 0;

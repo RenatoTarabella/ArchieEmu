@@ -5,6 +5,7 @@
  *
  *   archie_boot --rom ROM311 [--ms 3000] [--png schermo.png] [--floppy disco.adf] [--floppy2 disco.adf]
  *               [--ram 4] [--keys "testo"] [--trace-vectors] [--hist] [--hostfs cartella]
+ *               [--set-ram ms:MB]
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -202,6 +203,7 @@ int main(int argc, char **argv)
     uint32_t wav_frames = 0;
     double peak = 0, energy = 0;
     double keys_at = 15000;                        /* ms: quando iniziare a digitare */
+    double ram_at = -1; uint32_t ram_to = 0;       /* --set-ram ms:MB, come il menu */
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--rom") && i + 1 < argc) cfg.rom_path = argv[++i];
         else if (!strcmp(argv[i], "--ms") && i + 1 < argc) ms = atof(argv[++i]);
@@ -218,6 +220,10 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--wav") && i + 1 < argc) wav = argv[++i];
         else if (!strcmp(argv[i], "--keys") && i + 1 < argc) parse_keys(argv[++i]);
         else if (!strcmp(argv[i], "--keys-at") && i + 1 < argc) keys_at = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--set-ram") && i + 1 < argc) {
+            const char *v = argv[++i], *c = strchr(v, ':');
+            ram_at = atof(v); ram_to = c ? (uint32_t)atoi(c + 1) : 0;
+        }
         else { fprintf(stderr, "opzione sconosciuta: %s\n", argv[i]); return 1; }
     }
     if (!cfg.rom_path) { fprintf(stderr, "uso: archie_boot --rom file [--ms N] [--png file]\n"); return 1; }
@@ -239,6 +245,10 @@ int main(int argc, char **argv)
         ArcTime target = archie_now(&a) + ARC_MS(1);
         while (archie_now(&a) < target && !a.cpu.halted) {
             archie_run(&a, ARC_US(50));
+            if (ram_at >= 0 && archie_now(&a) >= ARC_MS(ram_at)) {
+                if (!archie_set_ram(&a, ram_to)) fprintf(stderr, "--set-ram: %u MB non valido\n", ram_to);
+                ram_at = -1;
+            }
             /* un evento di tasto ogni 40 ms dopo keys_at */
             if (key_next < key_count && archie_now(&a) >= ARC_MS(keys_at) + (ArcTime)key_next * ARC_MS(40)) {
                 if (key_steps[key_next].code == -2) archie_reset(&a);

@@ -353,6 +353,21 @@ void archie_reset(Archie *a)
     update_lines(a);
 }
 
+/* cambia la RAM (1, 2 o 4 MB) e riavvia: RISC OS la misura all'accensione */
+int archie_set_ram(Archie *a, uint32_t mb)
+{
+    if (mb != 1 && mb != 2 && mb != 4) return 0;
+    uint8_t *ram = calloc(1, mb << 20);
+    if (!ram) return 0;
+    free(a->ram);
+    a->ram = ram;
+    a->ram_size = mb << 20;
+    a->memc.ram = ram;
+    a->memc.ram_size = a->ram_size;
+    archie_reset(a);
+    return 1;
+}
+
 int archie_create(Archie *a, const ArchieConfig *cfg, char *err, size_t errsize)
 {
     memset(a, 0, sizeof *a);

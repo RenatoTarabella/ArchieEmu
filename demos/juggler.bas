@@ -13,6 +13,10 @@ DIM AC%(MAXSP%+1),AL%(MAXLMP%+1),HR(1),HG(1),HB(1)
 DIM IM% 320*200*3,E0% 322*12,E1% 322*12,HI% 4096*4,PL% 16*12,VB% 8
 REM for the assembler: sphere table, lists of entries, parameters
 DIM TB% 64*MAXSP%,LT% 64*MAXLMP%,ALL% 4*MAXSP%+4,LL% 4*MAXLMP%+4,RL% 4*MAXSP%+4,CB% 4*MAXSP%+4,GB% 320
+REM files are looked for in the application (!Juggler sets Juggler$Dir)
+JD$="":DIM JB% 256
+SYS "XOS_ReadVarVal","Juggler$Dir",JB%,255,0,3 TO ,,n%;f%
+IF (f% AND 1)=0 AND n%>0 THEN JD$="<Juggler$Dir>."
 PRINT "The Juggler - ray tracer by Eric Graham, 1987"
 PRINT
 PRINT "Scenes: robot (the Juggler), ele, dragon"
@@ -36,7 +40,8 @@ INPUT "Mode ? "MO%
 IF MO%<>13 AND MO%<>15 AND MO%<>28 AND MO%<>49 THEN MO%=13
 IF SC$="anim" AND MO%=49 THEN PRINT "The animation uses 256 colours: mode 13":MO%=13
 IF SC$="anim" THEN INPUT "Save the animation as (Return = don't save) ? "SV$ ELSE INPUT "Save the image as (Return = don't save) ? "SV$
-IF SC$="anim" THEN PROCload("Scenes.Anim.j00/dat") ELSE PROCload(FNscene(SC$))
+SV$=FNfile(SV$)
+IF SC$="anim" THEN PROCload(JD$+"Scenes.Anim.j00/dat") ELSE PROCload(FNscene(SC$))
 PROCexpose
 PROCproject
 PROCassemble2
@@ -57,8 +62,11 @@ IF FA% THEN PRINT "Ray tracing in assembler: ";TE%/100;" seconds"
 END
 
 DEF FNscene(s$)
-IF INSTR(s$,".")=0 AND INSTR(s$,"/")=0 THEN s$="Scenes."+s$+"/dat"
+IF INSTR(s$,".")=0 AND INSTR(s$,"/")=0 THEN s$=JD$+"Scenes."+s$+"/dat"
 =s$
+DEF FNfile(n$)
+IF n$<>"" AND INSTR(n$,".")=0 AND INSTR(n$,":")=0 THEN n$=JD$+n$
+=n$
 
 REM ---------------- scene file reader ----------------
 DEF PROCload(f$)
@@ -1886,7 +1894,7 @@ IF HIMEM-END<24*n%+216+16384 THEN MODE 12:PRINT "Not enough memory for the anima
 DIM AF% 216+24*n%
 !AF%=&4147554A:AF%!4=MO%:AF%!8=SK%:AF%!12=OW%:AF%!16=OH%:AF%!20=24
 FOR f%=0 TO 23
-  IF f%>0 THEN PROCload("Scenes.Anim.j"+RIGHT$("0"+STR$f%,2)+"/dat"):PROCexpose:PROCproject:IF FA% THEN PROCtable
+  IF f%>0 THEN PROCload(JD$+"Scenes.Anim.j"+RIGHT$("0"+STR$f%,2)+"/dat"):PROCexpose:PROCproject:IF FA% THEN PROCtable
   FOR i%=0 TO 322*12-4 STEP 4:E0%!i%=0:E1%!i%=0:NEXT
   GB%!g_e0=E0%:GB%!g_e1=E1%:GB%!g_fb=AF%+216+f%*n%
   PRINT TAB(0,0);"Frame ";f%+1;" of 24";
@@ -1914,10 +1922,12 @@ ENDPROC
 
 DEF PROCplayfile
 LOCAL t%,l%,i%
-INPUT "Animation file ? "SV$
+INPUT "Animation file (Return = JugAnim) ? "SV$
+IF SV$="" THEN SV$="JugAnim"
+SV$=FNfile(SV$)
 SYS "OS_File",17,SV$ TO t%,,,,l%
 IF t%<>1 THEN ERROR 214,"File "+SV$+" not found"
-IF HIMEM-END<l%+16384 THEN ERROR 214,"Not enough memory: "+STR$((l%+16384) DIV 1024)+"K are needed"
+IF HIMEM-END<l%+16384 THEN ERROR 214,"Not enough memory: "+STR$((l%+16384) DIV 1024)+"K are needed (*WimpSlot)"
 DIM AF% l%
 SYS "OS_File",16,SV$,AF%,0
 IF !AF%<>&4147554A THEN ERROR 214,SV$+" is not a Juggler animation"

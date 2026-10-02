@@ -1,0 +1,4 @@
+| !Run for !Juggler - Eric Graham's 1987 ray tracer
+Set Juggler$Dir <Obey$Dir>
+WimpSlot -min 2200K -max 2200K
+Run <Juggler$Dir>.!RunImage

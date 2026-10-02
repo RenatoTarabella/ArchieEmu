@@ -67,10 +67,34 @@ eseguito sotto vamos: `robot.rgb`, `ele.rgb` (320x200) e `*-s2*.rgb` (80x50,
   raggio-sfera per fotogramma 320x200 (ele 11,0, dragon 28,8).
 - Scena con 1 lampada; profondita' massima degli specchi in robot: 3.
 
+## Passo 2 fatto: programma BBC BASIC
+
+`demos/juggler.bas` (tokenizzato in `disc/Juggler` con `tools/make_juggler.sh`,
+scene in `disc/Scenes`). Gira sulla macchina BASIC e sull'Archimedes con
+RISC OS 3.11 (BASIC 1.05), da HostFS: `*DIR HostFS:$` e `CHAIN "Juggler"`.
+
+- Motore 1 "originale": rt1.c in BASIC, con le liste per riga di ssg.
+  Identico al riferimento (2 byte di 1 a passo 8). Robot a passo 4: 796 s.
+- Motore 2 "veloce": raytrace() intero in assembler a virgola fissa 16.16
+  (FNmul spezza la moltiplicazione, fdiv e fsqrt intere), filtro a 1/64
+  che lascia solo le sfere candidate, test esatto su quelle. Robot pieno:
+  143-171 s di ray tracing su ARM2 a 8 MHz (secondo la banda del video).
+  Dal riferimento: 822 pixel di 1-2 livelli, ~400 sulla fascia
+  dell'orizzonte (scacchi lontani), ~90 ai bordi delle riflessioni.
+  Due scelte: il raggio riflesso non testa la sua sfera (in virgola fissa
+  SMALL non basta a scartarla), FNmul arrotonda.
+- Schermo in assembler: 32 bpp diretto; 8 bpp (MODE 13, 15, 28) con i 16
+  registri del VIDC1 come bit bassi (R 3, G 2, B 3) e i bit alti nel pixel:
+  palette generica durante il calcolo, poi k-means sull'istogramma a 12 bit
+  e Floyd-Steinberg. Robot pieno in MODE 13 sulla macchina BASIC: 214 s in
+  tutto. Sull'Archimedes, passo 4: 16,9 s (10,8 di ray tracing).
+- `BASIC: IF t THEN` con t reale piccolo vale falso (troncato a 0): usare `t>0`.
+
 ## Passi
 
 1. ~~**Riferimento sul PC**~~: fatto, vedi sopra.
-2. **Programma BBC BASIC** (`!Juggler`, su HostFS):
+2. ~~**Programma BBC BASIC**~~: fatto, vedi sopra (manca l'applicazione
+   `!Juggler` per il desktop). Il piano era:
    - lettore di robot.dat in BASIC (anche dragon.dat, ele.dat);
    - motore "Originale": rt1.c in BASIC con i float (lento, identico);
    - motore "Veloce": raytrace() intero in assembler ARM a virgola fissa

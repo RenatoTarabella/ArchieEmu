@@ -10,7 +10,7 @@ DIM SX(MAXSP%+MAXLMP%),SY(MAXSP%+MAXLMP%),SZ(MAXSP%+MAXLMP%),SR(MAXSP%+MAXLMP%)
 DIM KR(MAXSP%+MAXLMP%),KG(MAXSP%+MAXLMP%),KB(MAXSP%+MAXLMP%),ST%(MAXSP%+MAXLMP%)
 DIM FG%(MAXSP%+MAXLMP%),XN%(MAXSP%+MAXLMP%),XX%(MAXSP%+MAXLMP%),YN%(MAXSP%+MAXLMP%),YX%(MAXSP%+MAXLMP%)
 DIM AC%(MAXSP%+1),AL%(MAXLMP%+1),HR(1),HG(1),HB(1)
-DIM IM% 320*200*3
+DIM IM% 320*200*3,E0% 322*12,E1% 322*12,HI% 4096*4,PL% 16*12,VB% 8
 REM for the assembler: sphere table, lists of entries, parameters
 DIM TB% 64*MAXSP%,LT% 64*MAXLMP%,ALL% 4*MAXSP%+4,LL% 4*MAXLMP%+4,RL% 4*MAXSP%+4,CB% 4*MAXSP%+4,GB% 256
 PRINT "The Juggler - ray tracer by Eric Graham, 1987"
@@ -34,6 +34,7 @@ INPUT "Save the image as (Return = don't save) ? "SV$
 PROCload(FNscene(SC$))
 PROCexpose
 PROCproject
+PROCassemble2
 IF FA% THEN PROCassemble:PROCtable
 TE%=0
 OW%=1+(NX%-1) DIV SK%:OH%=1+(NY%-1) DIV SK%
@@ -48,8 +49,10 @@ REM pixel size on screen: 2x2 in 640 x 480, 2x1 in 640 x 256
 ZX%=WI% DIV 320:ZY%=HE% DIV 240:IF ZY%<1 THEN ZY%=1
 X0%=(WI%-320*ZX%) DIV 2:Y0%=(HE%-200*ZY%) DIV 2
 LAST%=-1
+PROCscreen
 T%=TIME
 PROCrender
+PROCfinish
 T%=TIME-T%
 IF SV$<>"" THEN SYS "OS_File",10,SV$,&FFD,,IM%,IM%+OW%*OH%*3
 K%=GET
@@ -231,10 +234,14 @@ FOR j%=0 TO NY%-1 STEP SK%
     ii%+=1
   NEXT
   ENDIF
-  o%=IM%+jj%*OW%*3
-  FOR i%=0 TO NX%-1 STEP SK%
-    PROCplot(i%,j%,?o%,o%?1,o%?2):o%+=3
-  NEXT
+  IF GB%!g_bpp THEN
+    GB%!g_jj=jj%:H%=GB%:o%=USR(SH%)
+  ELSE
+    o%=IM%+jj%*OW%*3
+    FOR i%=0 TO NX%-1 STEP SK%
+      PROCplot(i%,j%,?o%,o%?1,o%?2):o%+=3
+    NEXT
+  ENDIF
   jj%+=1
 NEXT
 ENDPROC
@@ -1291,4 +1298,478 @@ LDMFD R13!,{R4,PC}
 ]
 NEXT
 RP%=rowpix
+ENDPROC
+
+REM ---------------- the screen ----------------
+REM 32 bpp: the colours as they are. 8 bpp (VIDC1): the 16 palette
+REM registers give only the low bits of a colour (red 3, green 2, blue
+REM 3) and the top 4 bits of the pixel give R3, G2, G3 and B3, so the
+REM palette is 16 triples of low bits. A generic one while the picture
+REM is traced, then one chosen for the picture (k-means on the
+REM histogram of its colours), with Floyd-Steinberg dithering.
+DEF PROCscreen
+LOCAL b%
+SYS "OS_ReadModeVariable",-1,9 TO ,,b%
+SYS "OS_ReadModeVariable",-1,6 TO ,,LB%
+!VB%=149:VB%!4=-1
+SYS "OS_ReadVduVariables",VB%,VB%
+GB%!g_scr=!VB%:GB%!g_lb=LB%:GB%!g_np=OW%*OH%
+GB%!g_x0=X0%:GB%!g_y0=Y0%:GB%!g_zx=ZX%:GB%!g_zy=ZY%
+GB%!g_ow=OW%:GB%!g_sk=SK%:GB%!g_img=IM%:GB%!g_pal=PL%:GB%!g_his=HI%
+GB%!g_e0=E0%:GB%!g_e1=E1%
+GB%!g_bpp=0
+IF b%=5 THEN GB%!g_bpp=32
+IF b%=3 THEN GB%!g_bpp=8:PROCpalette(0)
+ENDPROC
+
+REM the generic palette: red 1,3,5,7 green 0,2 blue 2,6 (+ high bits)
+DEF PROCpalette(o%)
+LOCAL e%,p%
+IF o%=0 THEN
+  FOR e%=0 TO 15
+    PL%!(e%*12)=1+2*(e% DIV 4):PL%!(e%*12+4)=2*((e% DIV 2) AND 1):PL%!(e%*12+8)=2+4*(e% AND 1)
+  NEXT
+ENDIF
+FOR p%=0 TO 255
+  e%=(p% AND 15)*12
+  VDU 19,p%,16,(PL%!e%+8*((p%>>4) AND 1))*17,(PL%!(e%+4)+4*((p%>>5) AND 3))*17,(PL%!(e%+8)+8*(p%>>7))*17
+NEXT
+ENDPROC
+
+REM after the picture: palette for it, then draw it again
+DEF PROCfinish
+LOCAL i%,j%
+IF GB%!g_bpp<>8 THEN ENDPROC
+H%=GB%:i%=USR(HS%)
+FOR i%=1 TO 8:H%=GB%:j%=USR(KM%):NEXT
+PROCpalette(1)
+FOR i%=0 TO (OW%+2)*12-4 STEP 4:E0%!i%=0:E1%!i%=0:NEXT
+FOR j%=0 TO OH%-1:GB%!g_jj=j%:H%=GB%:i%=USR(SH%):NEXT
+ENDPROC
+
+DEF PROCassemble2
+LOCAL pass%,code%
+g_scr=160:g_lb=164:g_bpp=168:g_x0=172:g_y0=176:g_zx=180:g_zy=184
+g_ow=188:g_img=192:g_pal=196:g_his=200:g_e0=204:g_e1=208:g_jj=212
+g_ii=216:g_src=220:g_dst=224:g_bh=228:g_pk=232:g_np=248:g_sk=104
+DIM code% 4096
+FOR pass%=0 TO 2 STEP 2
+P%=code%
+[OPT pass%
+
+; ---- show, called with USR, H% = global block - draws row g_jj
+.show
+STMFD R13!,{R0-R12,R14}
+MOV R12,R7
+LDR R0,[R12,#g_jj]
+LDR R1,[R12,#g_ow]
+ADD R1,R1,R1,LSL #1
+MUL R2,R0,R1
+LDR R3,[R12,#g_img]
+ADD R3,R3,R2
+STR R3,[R12,#g_src]
+; block height min(SK,200-y)*ZY, screen row Y0+y*ZY, y = jj*SK
+LDR R1,[R12,#g_sk]
+MUL R2,R0,R1
+RSB R3,R2,#200
+CMP R3,R1
+MOVGT R3,R1
+LDR R4,[R12,#g_zy]
+MUL R5,R3,R4
+STR R5,[R12,#g_bh]
+MUL R5,R2,R4
+LDR R4,[R12,#g_y0]
+ADD R5,R5,R4
+LDR R4,[R12,#g_lb]
+MUL R6,R5,R4
+LDR R4,[R12,#g_scr]
+ADD R6,R6,R4
+STR R6,[R12,#g_dst]
+MOV R0,#0
+STR R0,[R12,#g_ii]
+.sh_l
+LDR R0,[R12,#g_ii]
+LDR R1,[R12,#g_ow]
+CMP R0,R1
+BGE sh_done
+LDR R10,[R12,#g_src]
+ADD R10,R10,R0,LSL #1
+ADD R10,R10,R0
+LDR R1,[R12,#g_bpp]
+CMP R1,#32
+BNE sh_8
+; 32 bpp - &00BBGGRR, twice the dump byte
+LDRB R1,[R10]
+MOVS R1,R1,LSL #1
+CMP R1,#255
+MOVGT R1,#255
+LDRB R2,[R10,#1]
+MOV R2,R2,LSL #1
+CMP R2,#255
+MOVGT R2,#255
+ORR R1,R1,R2,LSL #8
+LDRB R2,[R10,#2]
+MOV R2,R2,LSL #1
+CMP R2,#255
+MOVGT R2,#255
+ORR R9,R1,R2,LSL #16
+MOV R8,#2
+B sh_block
+.sh_8
+; target in eighths of a level - byte-4 plus the diffused error
+LDR R11,[R12,#g_e0]
+ADD R11,R11,R0,LSL #3
+ADD R11,R11,R0,LSL #2
+ADD R11,R11,#12
+LDRB R0,[R10]
+LDR R3,[R11]
+ADD R0,R0,R3
+LDRB R1,[R10,#1]
+LDR R3,[R11,#4]
+ADD R1,R1,R3
+LDRB R2,[R10,#2]
+LDR R3,[R11,#8]
+ADD R2,R2,R3
+SUB R0,R0,#4
+SUB R1,R1,#4
+SUB R2,R2,#4
+CMN R0,#32
+MVNLT R0,#31
+CMP R0,#160
+MOVGT R0,#160
+CMN R1,#32
+MVNLT R1,#31
+CMP R1,#160
+MOVGT R1,#160
+CMN R2,#32
+MVNLT R2,#31
+CMP R2,#160
+MOVGT R2,#160
+BL pick
+; Floyd-Steinberg - 7/16 right, 3/16 5/16 1/16 below
+LDR R0,[R12,#g_ii]
+LDR R10,[R12,#g_e1]
+ADD R10,R10,R0,LSL #3
+ADD R10,R10,R0,LSL #2
+ADD R10,R10,#12
+MOV R0,R5
+BL sh_fs
+ADD R11,R11,#4
+ADD R10,R10,#4
+MOV R0,R6
+BL sh_fs
+ADD R11,R11,#4
+ADD R10,R10,#4
+MOV R0,R7
+BL sh_fs
+MOV R9,R8
+MOV R8,#0
+.sh_block
+; R9 = pixel, R8 = log2 of bytes per pixel
+LDR R0,[R12,#g_ii]
+LDR R1,[R12,#g_sk]
+MUL R2,R0,R1
+RSB R3,R2,#320
+CMP R3,R1
+MOVGT R3,R1
+LDR R4,[R12,#g_zx]
+MUL R5,R3,R4
+MUL R3,R2,R4
+LDR R4,[R12,#g_x0]
+ADD R3,R3,R4
+LDR R4,[R12,#g_dst]
+ADD R4,R4,R3,LSL R8
+LDR R6,[R12,#g_bh]
+LDR R7,[R12,#g_lb]
+.sh_r
+MOV R0,R4
+MOV R1,R5
+.sh_c
+CMP R8,#0
+STREQB R9,[R0],#1
+STRNE R9,[R0],#4
+SUBS R1,R1,#1
+BGT sh_c
+ADD R4,R4,R7
+SUBS R6,R6,#1
+BGT sh_r
+LDR R0,[R12,#g_ii]
+ADD R0,R0,#1
+STR R0,[R12,#g_ii]
+B sh_l
+.sh_done
+; 8 bpp - the next row's errors become this row's
+LDR R0,[R12,#g_bpp]
+CMP R0,#8
+BNE sh_x
+LDR R0,[R12,#g_e0]
+LDR R1,[R12,#g_e1]
+STR R1,[R12,#g_e0]
+STR R0,[R12,#g_e1]
+LDR R2,[R12,#g_ow]
+ADD R2,R2,#2
+ADD R2,R2,R2,LSL #1
+MOV R3,#0
+.sh_z
+STR R3,[R0],#4
+SUBS R2,R2,#1
+BGT sh_z
+.sh_x
+LDMFD R13!,{R0-R12,PC}
+.sh_fs
+; error R0 - R11 this row's next pixel - R10 next row's pixel
+RSB R1,R0,R0,LSL #3
+LDR R2,[R11,#12]
+ADD R2,R2,R1,ASR #4
+STR R2,[R11,#12]
+ADD R1,R0,R0,LSL #1
+LDR R2,[R10,#-12]
+ADD R2,R2,R1,ASR #4
+STR R2,[R10,#-12]
+ADD R1,R0,R0,LSL #2
+LDR R2,[R10]
+ADD R2,R2,R1,ASR #4
+STR R2,[R10]
+LDR R2,[R10,#12]
+ADD R2,R2,R0,ASR #4
+STR R2,[R10,#12]
+MOV PC,R14
+
+; ---- pick - R0-R2 target in eighths of a level. Returns the pixel in
+; R8 and the errors in R5-R7, using the 16 entries at g_pal
+.pick
+STMFD R13!,{R11,R14}
+LDR R11,[R12,#g_pal]
+MVN R9,#0
+MOV R10,#0
+.pk_l
+LDR R3,[R11],#4
+SUB R5,R0,R3,LSL #3
+MOV R4,#0
+CMP R5,#32
+SUBGT R5,R5,#64
+ORRGT R4,R4,#16
+LDR R3,[R11],#4
+SUB R6,R1,R3,LSL #3
+ADD R7,R6,#16
+MOVS R7,R7,ASR #5
+MOVMI R7,#0
+CMP R7,#3
+MOVGT R7,#3
+SUB R6,R6,R7,LSL #5
+ORR R4,R4,R7,LSL #5
+LDR R3,[R11],#4
+SUB R7,R2,R3,LSL #3
+CMP R7,#32
+SUBGT R7,R7,#64
+ORRGT R4,R4,#128
+MUL R3,R5,R5
+MOV R3,R3,LSL #1
+MUL R8,R6,R6
+ADD R3,R3,R8,LSL #2
+MLA R3,R7,R7,R3
+CMP R3,R9
+BHS pk_n
+MOV R9,R3
+ORR R8,R4,R10
+ADD R3,R12,#g_pk
+STMIA R3,{R5-R8}
+.pk_n
+ADD R10,R10,#1
+CMP R10,#16
+BLT pk_l
+ADD R3,R12,#g_pk
+LDMIA R3,{R5-R8}
+LDMFD R13!,{R11,PC}
+
+; ---- histo, USR - the picture's colours in 4 bits per channel
+.histo
+STMFD R13!,{R0-R12,R14}
+MOV R12,R7
+LDR R0,[R12,#g_his]
+MOV R1,#4096
+MOV R2,#0
+.hs_z
+STR R2,[R0],#4
+SUBS R1,R1,#1
+BGT hs_z
+LDR R0,[R12,#g_img]
+LDR R1,[R12,#g_ow]
+LDR R2,[R12,#g_np]
+LDR R6,[R12,#g_his]
+.hs_l
+LDRB R3,[R0],#1
+MOV R3,R3,LSR #3
+CMP R3,#15
+MOVGT R3,#15
+LDRB R4,[R0],#1
+MOV R4,R4,LSR #3
+CMP R4,#15
+MOVGT R4,#15
+ORR R3,R4,R3,LSL #4
+LDRB R4,[R0],#1
+MOV R4,R4,LSR #3
+CMP R4,#15
+MOVGT R4,#15
+ORR R3,R4,R3,LSL #4
+LDR R4,[R6,R3,LSL #2]
+ADD R4,R4,#1
+STR R4,[R6,R3,LSL #2]
+SUBS R2,R2,#1
+BGT hs_l
+LDMFD R13!,{R0-R12,PC}
+
+; ---- kmeans, USR - one step - every colour goes to its best entry,
+; then each entry takes for each channel the low bits that make the
+; least squared error over its colours
+.kmeans
+STMFD R13!,{R0-R12,R14}
+MOV R12,R7
+SUB R13,R13,#16*20*4
+MOV R0,R13
+MOV R1,#16*20
+MOV R2,#0
+.km_z
+STR R2,[R0],#4
+SUBS R1,R1,#1
+BGT km_z
+MOV R0,#0
+.km_b
+STR R0,[R12,#g_ii]
+LDR R1,[R12,#g_his]
+LDR R1,[R1,R0,LSL #2]
+CMP R1,#0
+BEQ km_nb
+STR R1,[R12,#g_jj]
+MOV R2,R0,LSL #3
+AND R2,R2,#&78
+MOV R1,R0,LSR #1
+AND R1,R1,#&78
+MOV R0,R0,LSR #5
+AND R0,R0,#&78
+BL pick
+AND R8,R8,#15
+MOV R1,#80
+MLA R9,R8,R1,R13
+LDR R11,[R12,#g_jj]
+LDR R0,[R12,#g_ii]
+; red - levels l and l+8
+MOV R1,R0,LSR #8
+MOV R2,#0
+.km_r
+SUBS R3,R1,R2
+RSBMI R3,R3,#0
+SUB R4,R1,R2
+SUB R4,R4,#8
+CMP R4,#0
+RSBLT R4,R4,#0
+CMP R4,R3
+MOVLT R3,R4
+MUL R4,R3,R3
+LDR R5,[R9,R2,LSL #2]
+MLA R5,R4,R11,R5
+STR R5,[R9,R2,LSL #2]
+ADD R2,R2,#1
+CMP R2,#8
+BLT km_r
+; green - levels l, l+4, l+8, l+12
+MOV R1,R0,LSR #4
+AND R1,R1,#15
+MOV R2,#0
+.km_g
+SUBS R4,R1,R2
+RSBMI R3,R4,#0
+BMI km_g2
+CMP R4,#12
+SUBGT R3,R4,#12
+BGT km_g2
+AND R3,R4,#3
+CMP R3,#2
+RSBGT R3,R3,#4
+.km_g2
+MUL R4,R3,R3
+ADD R5,R9,#32
+LDR R6,[R5,R2,LSL #2]
+MLA R6,R4,R11,R6
+STR R6,[R5,R2,LSL #2]
+ADD R2,R2,#1
+CMP R2,#4
+BLT km_g
+; blue
+AND R1,R0,#15
+MOV R2,#0
+.km_u
+SUBS R3,R1,R2
+RSBMI R3,R3,#0
+SUB R4,R1,R2
+SUB R4,R4,#8
+CMP R4,#0
+RSBLT R4,R4,#0
+CMP R4,R3
+MOVLT R3,R4
+MUL R4,R3,R3
+ADD R5,R9,#48
+LDR R6,[R5,R2,LSL #2]
+MLA R6,R4,R11,R6
+STR R6,[R5,R2,LSL #2]
+ADD R2,R2,#1
+CMP R2,#8
+BLT km_u
+LDR R0,[R12,#g_ii]
+.km_nb
+ADD R0,R0,#1
+CMP R0,#4096
+BLT km_b
+; new entries - the least error per channel, unless nothing chose them
+MOV R0,#0
+LDR R11,[R12,#g_pal]
+.km_e
+MOV R1,#80
+MLA R9,R0,R1,R13
+MOV R1,#0
+MOV R2,#0
+.km_t
+LDR R3,[R9,R1,LSL #2]
+ORR R2,R2,R3
+ADD R1,R1,#1
+CMP R1,#20
+BLT km_t
+CMP R2,#0
+BEQ km_ne
+MOV R1,R9
+MOV R2,#8
+BL km_min
+STR R3,[R11]
+ADD R1,R9,#32
+MOV R2,#4
+BL km_min
+STR R3,[R11,#4]
+ADD R1,R9,#48
+MOV R2,#8
+BL km_min
+STR R3,[R11,#8]
+.km_ne
+ADD R11,R11,#12
+ADD R0,R0,#1
+CMP R0,#16
+BLT km_e
+ADD R13,R13,#16*20*4
+LDMFD R13!,{R0-R12,PC}
+.km_min
+; index of the least of R2 words at R1, in R3
+MOV R3,#0
+LDR R4,[R1]
+MOV R5,#1
+.km_m
+CMP R5,R2
+MOVGE PC,R14
+LDR R6,[R1,R5,LSL #2]
+CMP R6,R4
+MOVLO R4,R6
+MOVLO R3,R5
+ADD R5,R5,#1
+B km_m
+]
+NEXT
+SH%=show:HS%=histo:KM%=kmeans
 ENDPROC

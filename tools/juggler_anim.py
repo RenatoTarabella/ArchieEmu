@@ -5,8 +5,8 @@ juggler_anim.py - Genera le 24 scene di un'animazione del Juggler.
 Le scene originali dell'animazione di Eric Graham (1986-87) sono perse:
 questa e' una ricostruzione procedurale nello stesso spirito, a partire
 dalla geometria e dalla telecamera di robot.dat. Come nell'originale il robot
-sta fermo sul posto (piedi dove li mette robot.dat, un leggero molleggio
-con le ginocchia) e fa giocoleria a cascata con tre palloni a specchio:
+sta fermo sul posto (piedi dove li mette robot.dat; piega le ginocchia
+solo quando riceve un pallone) e fa giocoleria a cascata con tre palloni a specchio:
 un lancio ogni 4 fotogrammi, mani alternate, 8 fotogrammi in volo e 4 in
 mano.
 
@@ -75,7 +75,9 @@ def flying(f):
 
 def frame(f):
     dx = 0.0
-    bob = -0.05 * math.cos(2 * math.pi * f / 8)      # molleggio
+    # le ginocchia si piegano solo quando una mano riceve un pallone
+    # (una presa ogni 4 fotogrammi), poi tornano dritte
+    bob = (-0.08, -0.03, 0.0, 0.0)[f % 4]
     sp = []                                           # (colore, tipo, catena)
 
     def mv(p, z=0.0):

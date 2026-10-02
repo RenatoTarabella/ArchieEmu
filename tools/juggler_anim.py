@@ -4,11 +4,11 @@ juggler_anim.py - Genera le 24 scene di un'animazione del Juggler.
 
 Le scene originali dell'animazione di Eric Graham (1986-87) sono perse:
 questa e' una ricostruzione procedurale nello stesso spirito, a partire
-dalla geometria di robot.dat. Il robot cammina verso l'osservatore (la
-telecamera e la lampada lo seguono, il pavimento scorre di 6 unita' in
-24 fotogrammi, cosi' il ciclo si chiude) e fa giocoleria a cascata con
-tre palloni a specchio: un lancio ogni 4 fotogrammi, mani alternate,
-8 fotogrammi in volo e 4 in mano.
+dalla geometria e dalla telecamera di robot.dat. Come nell'originale il robot
+sta fermo sul posto (piedi dove li mette robot.dat, un leggero molleggio
+con le ginocchia) e fa giocoleria a cascata con tre palloni a specchio:
+un lancio ogni 4 fotogrammi, mani alternate, 8 fotogrammi in volo e 4 in
+mano.
 
 Uso: juggler_anim.py cartella_di_uscita   (scrive j00.dat ... j23.dat)
 """
@@ -17,8 +17,6 @@ import os
 import sys
 
 N = 24                     # fotogrammi
-STEP = 6.0 / N             # avanzamento per fotogramma (verso -x)
-X0 = 30.0                  # tutto spostato in x>0: scacchi periodici
 G = 0.25                   # gravita' in unita'/fotogramma^2
 BALL_X = -1.2              # piano dei palloni, davanti al corpo
 CATCH_Y, THROW_Y, HAND_Z = 2.1, 1.3, 4.8   # centro del pallone in mano
@@ -76,8 +74,8 @@ def flying(f):
 
 
 def frame(f):
-    dx = X0 - STEP * f
-    bob = -0.08 * math.cos(2 * math.pi * f / 6)      # due volte per passo
+    dx = 0.0
+    bob = -0.05 * math.cos(2 * math.pi * f / 8)      # molleggio
     sp = []                                           # (colore, tipo, catena)
 
     def mv(p, z=0.0):
@@ -101,17 +99,11 @@ def frame(f):
     sp.append(("<.1,.1,1.>", 1, [(mv([-0.4, -0.2, 6.1], bob), 0.15)]))
     sp.append(("<1,.7,.7>", 1, [(mv([0, 0, 5.5], bob), 0.2)]))
     sp.append(("<1,.1,.1>", 1, [(mv([0, 0, 4.6], bob), 0.8), 5, (mv([0, 0, 3.3], bob), 0.6)]))
-    # gambe: piede d'appoggio che scorre all'indietro, l'altro in volo
-    for side, ph in ((1, 0.0), (-1, 0.5)):
-        hip = [0, side * 0.6, 2.9 + bob]
-        s = (f / 12.0 + ph) % 1.0                  # due passi per gamba in 24
-        if s < 0.5:                                 # appoggio: da -0.75 a +0.75
-            fx, fz = -0.75 + 3.0 * s, 0.0
-        else:                                       # volo: torna avanti
-            q = (s - 0.5) * 2
-            fx, fz = 0.75 - 1.5 * q, 0.35 * math.sin(math.pi * q)
-        foot = [fx, side * 0.6, fz]
-        knee = ik(hip, foot, 1.43, 1.61, [-1, 0, 0])
+    # gambe: piedi fermi, il ginocchio si piega con il molleggio
+    for hip, foot, l1, l2 in (([0, 0.6, 2.9], [-0.4, 0.6, 0], 1.432, 1.612),
+                              ([0, -0.6, 2.9], [0.4, -0.6, 0], 1.315, 1.612)):
+        hip = [hip[0], hip[1], hip[2] + bob]
+        knee = ik(hip, foot, l1, l2, [-1, 0, 0])
         sp.append(("<1,.7,.7>", 1, [(mv(hip), 0.2), 6, (mv(knee), 0.2), 7, (mv(foot), 0.1)]))
     # braccia: spalla, gomito (IK, verso il basso e in fuori), mano
     for side in (1, -1):
@@ -138,7 +130,7 @@ def write(path, f):
             i += 2
         lines.append(s + ";")
     lines[-1] += ";"
-    lines += ["", "1", "   %s:15 <1,1,1>" % fmt([-100 + dx, 50, 150]), "",
+    lines += ["", "1", "   %s:15 <1,1,1>" % fmt([-100, 50, 150]), "",
               "<1.5,1.5,0>  <0,1.5,0> <.25,.25,.25> <.1,.1,1> <.7,.7,1>", ""]
     with open(path, "w", newline="\n") as fh:
         fh.write("\n".join(lines))

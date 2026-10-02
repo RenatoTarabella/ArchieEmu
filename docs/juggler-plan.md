@@ -99,13 +99,12 @@ sugli scacchi, focale ~25-28) e il robot cammina: il tentativo di
 ricavare la telecamera dagli scacchi e' arrivato al 71-74% dei pixel e si
 e' fermato li'. Scelta dell'utente: animazione procedurale.
 
-- `tools/juggler_anim.py` -> `disc/Scenes/Anim/j00..j23.dat`: geometria di
+- `tools/juggler_anim.py` -> `disc/Scenes/Anim/j00..j23.dat`: geometria e telecamera di
   robot.dat; cascata a 3 palloni (lancio ogni 4 fotogrammi, 8 in volo, 4
   in mano, apice z=6,8 come robot.dat); mani che seguono i palloni, gomiti
-  e ginocchia in IK; passo con piede d'appoggio fermo a terra; tutto (con
-  telecamera e lampada) avanza di 6 unita' in 24 fotogrammi, spostato a
-  x=30 perche' gli scacchi siano periodici (gingham() non lo e' vicino
-  agli assi).
+  e ginocchia in IK. Il robot sta fermo come nell'originale (il pavimento
+  dei 24 fotogrammi originali e' identico): piedi di robot.dat, leggero
+  molleggio. (Una prima versione lo faceva camminare: sbagliato.)
 - Nel programma: scena `anim` (solo 256 colori), palette scelta sul primo
   fotogramma, fotogrammi in memoria come pixel e salvati in un file
   (header JUGA, modo, passo, larghezza, altezza, 24, palette, pixel);

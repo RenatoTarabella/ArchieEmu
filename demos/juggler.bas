@@ -12,11 +12,15 @@ DIM FG%(MAXSP%+MAXLMP%),XN%(MAXSP%+MAXLMP%),XX%(MAXSP%+MAXLMP%),YN%(MAXSP%+MAXLM
 DIM AC%(MAXSP%+1),AL%(MAXLMP%+1),HR(1),HG(1),HB(1)
 DIM IM% 320*200*3,E0% 322*12,E1% 322*12,HI% 4096*4,PL% 16*12,VB% 8
 REM for the assembler: sphere table, lists of entries, parameters
-DIM TB% 64*MAXSP%,LT% 64*MAXLMP%,ALL% 4*MAXSP%+4,LL% 4*MAXLMP%+4,RL% 4*MAXSP%+4,CB% 4*MAXSP%+4,GB% 256
+DIM TB% 64*MAXSP%,LT% 64*MAXLMP%,ALL% 4*MAXSP%+4,LL% 4*MAXLMP%+4,RL% 4*MAXSP%+4,CB% 4*MAXSP%+4,GB% 320
 PRINT "The Juggler - ray tracer by Eric Graham, 1987"
 PRINT
-INPUT "Scene (robot, ele, dragon) ? "SC$
+PRINT "Scenes: robot (the Juggler), ele, dragon"
+PRINT "        anim = a juggling animation, 24 frames"
+PRINT "        play = play a saved animation"
+INPUT "Scene ? "SC$
 IF SC$="" THEN SC$="robot"
+IF SC$="play" THEN PROCplayfile:END
 INPUT "Detail (1=full, 2, 4, 8=fastest) ? "SK%
 IF SK%<>2 AND SK%<>4 AND SK%<>8 THEN SK%=1
 INPUT "Engine: 1=original (BASIC only), 2=fast (ARM assembler) ? "EN%
@@ -30,32 +34,23 @@ PRINT "  28 = 640 x 480, 256 colours (VGA monitor)"
 PRINT "  49 = 640 x 480, 16M colours (emulator only, no Archimedes)"
 INPUT "Mode ? "MO%
 IF MO%<>13 AND MO%<>15 AND MO%<>28 AND MO%<>49 THEN MO%=13
-INPUT "Save the image as (Return = don't save) ? "SV$
-PROCload(FNscene(SC$))
+IF SC$="anim" AND MO%=49 THEN PRINT "The animation uses 256 colours: mode 13":MO%=13
+IF SC$="anim" THEN INPUT "Save the animation as (Return = don't save) ? "SV$ ELSE INPUT "Save the image as (Return = don't save) ? "SV$
+IF SC$="anim" THEN PROCload("Scenes.Anim.j00/dat") ELSE PROCload(FNscene(SC$))
 PROCexpose
 PROCproject
 PROCassemble2
 IF FA% THEN PROCassemble:PROCtable
 TE%=0
 OW%=1+(NX%-1) DIV SK%:OH%=1+(NY%-1) DIV SK%
-MODE MO%
-OFF
-SYS "OS_ReadModeVariable",-1,4 TO ,,XE%
-SYS "OS_ReadModeVariable",-1,5 TO ,,YE%
-SYS "OS_ReadModeVariable",-1,11 TO ,,WI%
-SYS "OS_ReadModeVariable",-1,12 TO ,,HE%
-WI%+=1:HE%+=1
-REM pixel size on screen: 2x2 in 640 x 480, 2x1 in 640 x 256
-ZX%=WI% DIV 320:ZY%=HE% DIV 240:IF ZY%<1 THEN ZY%=1
-X0%=(WI%-320*ZX%) DIV 2:Y0%=(HE%-200*ZY%) DIV 2
+PROCmode
 LAST%=-1
 PROCscreen
 T%=TIME
-PROCrender
-PROCfinish
+IF SC$="anim" THEN PROCanim ELSE PROCrender:PROCfinish
 T%=TIME-T%
-IF SV$<>"" THEN SYS "OS_File",10,SV$,&FFD,,IM%,IM%+OW%*OH%*3
-K%=GET
+IF SC$<>"anim" AND SV$<>"" THEN SYS "OS_File",10,SV$,&FFD,,IM%,IM%+OW%*OH%*3
+IF SC$="anim" THEN PROCplay ELSE K%=GET
 MODE 12
 PRINT "Render time: ";T%/100;" seconds"
 IF FA% THEN PRINT "Ray tracing in assembler: ";TE%/100;" seconds"
@@ -1316,7 +1311,7 @@ SYS "OS_ReadVduVariables",VB%,VB%
 GB%!g_scr=!VB%:GB%!g_lb=LB%:GB%!g_np=OW%*OH%
 GB%!g_x0=X0%:GB%!g_y0=Y0%:GB%!g_zx=ZX%:GB%!g_zy=ZY%
 GB%!g_ow=OW%:GB%!g_sk=SK%:GB%!g_img=IM%:GB%!g_pal=PL%:GB%!g_his=HI%
-GB%!g_e0=E0%:GB%!g_e1=E1%
+GB%!g_e0=E0%:GB%!g_e1=E1%:GB%!g_fb=0:GB%!g_oh=OH%
 GB%!g_bpp=0
 IF b%=5 THEN GB%!g_bpp=32
 IF b%=3 THEN GB%!g_bpp=8:PROCpalette(0)
@@ -1352,6 +1347,7 @@ LOCAL pass%,code%
 g_scr=160:g_lb=164:g_bpp=168:g_x0=172:g_y0=176:g_zx=180:g_zy=184
 g_ow=188:g_img=192:g_pal=196:g_his=200:g_e0=204:g_e1=208:g_jj=212
 g_ii=216:g_src=220:g_dst=224:g_bh=228:g_pk=232:g_np=248:g_sk=104
+g_fb=256:g_oh=260
 DIM code% 4096
 FOR pass%=0 TO 2 STEP 2
 P%=code%
@@ -1462,6 +1458,16 @@ ADD R11,R11,#4
 ADD R10,R10,#4
 MOV R0,R7
 BL sh_fs
+LDR R0,[R12,#g_fb]
+CMP R0,#0
+BEQ sh_nf
+LDR R1,[R12,#g_jj]
+LDR R2,[R12,#g_ow]
+MUL R3,R1,R2
+ADD R0,R0,R3
+LDR R1,[R12,#g_ii]
+STRB R8,[R0,R1]
+.sh_nf
 MOV R9,R8
 MOV R8,#0
 .sh_block
@@ -1581,6 +1587,85 @@ BLT pk_l
 ADD R3,R12,#g_pk
 LDMIA R3,{R5-R8}
 LDMFD R13!,{R11,PC}
+
+; ---- play, USR - copies the frame at g_fb to the screen
+.play
+STMFD R13!,{R0-R12,R14}
+MOV R12,R7
+LDR R0,[R12,#g_fb]
+LDR R1,[R12,#g_sk]
+LDR R2,[R12,#g_zx]
+MUL R3,R1,R2
+LDR R2,[R12,#g_zy]
+MUL R4,R1,R2
+LDR R5,[R12,#g_y0]
+LDR R6,[R12,#g_lb]
+MUL R7,R5,R6
+LDR R5,[R12,#g_scr]
+ADD R7,R7,R5
+LDR R5,[R12,#g_x0]
+ADD R7,R7,R5
+LDR R8,[R12,#g_oh]
+; one screen pixel per picture pixel, rows of whole words - LDM and STM
+CMP R3,#1
+CMPEQ R4,#1
+BNE py_gen
+TST R7,#3
+BNE py_gen
+LDR R9,[R12,#g_ow]
+TST R9,#31
+BNE py_gen
+.py_fr
+MOV R10,R7
+LDR R9,[R12,#g_ow]
+.py_fw
+LDMIA R0!,{R1-R6,R11,R14}
+STMIA R10!,{R1-R6,R11,R14}
+SUBS R9,R9,#32
+BGT py_fw
+LDR R1,[R12,#g_lb]
+ADD R7,R7,R1
+SUBS R8,R8,#1
+BGT py_fr
+LDMFD R13!,{R0-R12,PC}
+.py_gen
+MOV R11,#200
+LDR R1,[R12,#g_zy]
+MUL R9,R11,R1
+.py_r
+MOV R5,R4
+.py_s
+CMP R9,#0
+BLE py_done
+SUB R9,R9,#1
+MOV R10,R7
+MOV R6,R0
+LDR R1,[R12,#g_ow]
+MOV R2,#320
+LDR R11,[R12,#g_zx]
+MUL R2,R11,R2
+.py_p
+LDRB R11,[R6],#1
+MOV R14,R3
+.py_c
+SUBS R2,R2,#1
+BLT py_ne
+STRB R11,[R10],#1
+SUBS R14,R14,#1
+BGT py_c
+SUBS R1,R1,#1
+BGT py_p
+.py_ne
+LDR R1,[R12,#g_lb]
+ADD R7,R7,R1
+SUBS R5,R5,#1
+BGT py_s
+LDR R1,[R12,#g_ow]
+ADD R0,R0,R1
+SUBS R8,R8,#1
+BGT py_r
+.py_done
+LDMFD R13!,{R0-R12,PC}
 
 ; ---- histo, USR - the picture's colours in 4 bits per channel
 .histo
@@ -1771,5 +1856,78 @@ ADD R5,R5,#1
 B km_m
 ]
 NEXT
-SH%=show:HS%=histo:KM%=kmeans
+SH%=show:HS%=histo:KM%=kmeans:PY%=play
+ENDPROC
+
+DEF PROCmode
+MODE MO%
+OFF
+SYS "OS_ReadModeVariable",-1,4 TO ,,XE%
+SYS "OS_ReadModeVariable",-1,5 TO ,,YE%
+SYS "OS_ReadModeVariable",-1,11 TO ,,WI%
+SYS "OS_ReadModeVariable",-1,12 TO ,,HE%
+WI%+=1:HE%+=1
+REM pixel size on screen: 2x2 in 640 x 480, 2x1 in 640 x 256
+ZX%=WI% DIV 320:ZY%=HE% DIV 240:IF ZY%<1 THEN ZY%=1
+X0%=(WI%-320*ZX%) DIV 2:Y0%=(HE%-200*ZY%) DIV 2
+ENDPROC
+
+REM ---------------- the animation ----------------
+REM Eric Graham's 24 scenes of the 1986-87 animation are lost: the
+REM ones in Scenes.Anim are a reconstruction in the same spirit, made
+REM by tools/juggler_anim.py from robot.dat. The palette is chosen on
+REM the first frame and kept for all of them; the frames are kept in
+REM memory as pixels, after a header (JUGA, mode, detail, width,
+REM height, frames) and the 16 palette entries
+DEF PROCanim
+LOCAL f%,n%,i%
+n%=OW%*OH%
+IF HIMEM-END<24*n%+216+16384 THEN MODE 12:PRINT "Not enough memory for the animation: ";(24*n%+216+16384) DIV 1024;"K are needed (*WimpSlot, or less detail)":END
+DIM AF% 216+24*n%
+!AF%=&4147554A:AF%!4=MO%:AF%!8=SK%:AF%!12=OW%:AF%!16=OH%:AF%!20=24
+FOR f%=0 TO 23
+  IF f%>0 THEN PROCload("Scenes.Anim.j"+RIGHT$("0"+STR$f%,2)+"/dat"):PROCexpose:PROCproject:IF FA% THEN PROCtable
+  FOR i%=0 TO 322*12-4 STEP 4:E0%!i%=0:E1%!i%=0:NEXT
+  GB%!g_e0=E0%:GB%!g_e1=E1%:GB%!g_fb=AF%+216+f%*n%
+  PRINT TAB(0,0);"Frame ";f%+1;" of 24";
+  PROCrender
+  IF f%=0 THEN PROCfinish
+NEXT
+FOR i%=0 TO 191 STEP 4:AF%!(24+i%)=PL%!i%:NEXT
+IF SV$<>"" THEN SYS "OS_File",10,SV$,&FFD,,AF%,AF%+216+24*n%
+ENDPROC
+
+REM play the frames until a key other than 1-9 (the speed) is pressed
+DEF PROCplay
+LOCAL f%,k%,d%,i%
+d%=2:PRINT TAB(0,0);SPC(20);
+REPEAT
+  FOR f%=0 TO 23
+    GB%!g_fb=AF%+216+f%*OW%*OH%:H%=GB%:i%=USR(PY%)
+    FOR i%=1 TO d%:SYS "OS_Byte",19:NEXT
+    k%=INKEY(0)
+    IF k%>=ASC"1" AND k%<=ASC"9" THEN d%=k%-ASC"0":k%=-1
+    IF k%<>-1 THEN f%=23
+  NEXT
+UNTIL k%<>-1
+ENDPROC
+
+DEF PROCplayfile
+LOCAL t%,l%,i%
+INPUT "Animation file ? "SV$
+SYS "OS_File",17,SV$ TO t%,,,,l%
+IF t%<>1 THEN ERROR 214,"File "+SV$+" not found"
+IF HIMEM-END<l%+16384 THEN ERROR 214,"Not enough memory: "+STR$((l%+16384) DIV 1024)+"K are needed"
+DIM AF% l%
+SYS "OS_File",16,SV$,AF%,0
+IF !AF%<>&4147554A THEN ERROR 214,SV$+" is not a Juggler animation"
+MO%=AF%!4:SK%=AF%!8:OW%=AF%!12:OH%=AF%!16
+FA%=FALSE:SC$="play"
+PROCassemble2
+PROCmode
+PROCscreen
+FOR i%=0 TO 191 STEP 4:PL%!i%=AF%!(24+i%):NEXT
+PROCpalette(1)
+PROCplay
+MODE 12
 ENDPROC

@@ -73,17 +73,37 @@ codice copiato in questo progetto MIT.
    con L aggiornata; LDM/STM sempre aggiornata), TSTP & co. nei modi a 32
    bit (copiano l'SPSR), STR/STM di PC = +12. La cache non e' emulata (e'
    write-through: conta solo per i tempi).
-2. **Fino allo schermo di avvio**: mappa della memoria, IOMD (interrupt,
-   timer, memoria), VIDC20 essenziale. `riscpc_boot` con il rapporto del POST
-   e la PNG dello schermo, come per l'Archimedes; traccia degli accessi I/O
-   sconosciuti per guidare il lavoro sulla ROM350.
+2. **Fino allo schermo di avvio** (fatto, si arriva al desktop):
+   `src/riscpc` (iomd.c, vidc20.c, riscpc.c) e `tools/riscpc_boot`. La
+   ROM350 passa il POST e porta il desktop a 640x480 a 16 colori in ~8 s
+   emulati, con 1 o 2 MB di VRAM o senza; anche con l'ARM710 e con le ROM
+   3.60, 3.70 e 3.71 (la 3.71 chiede un disco: "Disc drive not known").
+   Cose imparate sulla ROM:
+   - il POST spegne il bit P in SVC32 e poi usa TEQP: senza P la CPU
+     ricade nel modo a 26 bit corrispondente;
+   - il POST misura il DMA del suono: 1024 byte con SFR = 8 devono durare
+     10,03-10,29 ms sul timer 1 (un byte ogni SFR + 2 us). Stato del
+     canale: bit 0 il buffer su cui lavora il DMA, la CPU riempie l'altro;
+   - la VRAM si misura col bus a 64 bit (VREFCR &41): con 1 MB la parola a
+     +4 ricade su +0, allora si riprova a 32 bit (&21);
+   - tasti del mouse a &03310000 (bit 4-6, attivi bassi); le schede assenti
+     (&033C0000 e lo spazio EASI) leggono &FF;
+   - il risultato del POST: bordo verde o rosso e codice lampeggiato sul
+     LED del floppy (porta &3F2); lo stato e' in R12 del banco FIQ.
+   Strumenti di `riscpc_boot`: `--trace-io`, `--watch-io lo hi`,
+   `--trace-modes`, `--watch-low`, `--break pc`, `--ring N`, `--hist`.
+   Ancora da fare qui: tempi del frame dal VIDC20 (ora 50 Hz fissi),
+   cursore hardware, il Super I/O (RISC OS lo configura a &03010FC0).
 3. **Tastiera, mouse, CMOS**: PS/2 tramite l'IOMD, mouse a quadratura,
    PCF8583 sulle linee I2C. Obiettivo: il desktop di RISC OS 3.5.
 4. **Floppy**: 82C711/82077 con il suo DMA o FIQ; le immagini ADF esistenti.
 5. **IDE**: immagini di hard disc (`.hdf`), ADFS su IDE, formattazione con
    HForm.
 6. **VIDC20 completo e suono**: modi alti a 16/32 bpp, cursore hardware,
-   suono; poi l'integrazione nei frontend Win32 e Mac.
+   suono; poi l'integrazione nei frontend Win32 e Mac, con una finestra
+   iniziale (splash) che chiede prima del boot quale macchina aprire:
+   Archimedes (ROM fino alla 3.11, ARM2) o Risc PC (ROM 3.5/3.6/3.7,
+   ARM610 o ARM710, RAM e VRAM).
 7. **ARM710**, poi StrongARM e RISC OS 3.7 o 3.8.
 
 Ogni passo si chiude con i test e con la ROM che arriva un po' piu' avanti

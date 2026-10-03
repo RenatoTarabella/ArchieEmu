@@ -286,6 +286,21 @@ TEST(msr_32bit_mode_needs_p)
     CHECK_EQ(t->cpu.r[2], ARM6_SVC32);
 }
 
+TEST(clearing_p_falls_back_to_26bit_mode)
+{
+    /* il POST di RISC OS 3.5: MCR c1 con P = 0 mentre e' in SVC32, poi TEQP */
+    T *t = setup(ARM6_SVC32);
+    emit(t, DPI(MOV, 0, 0, 0, ARM6_CTRL_D));
+    emit(t, MCR15(1, 0));
+    emit(t, MRS(1, 0));
+    emit(t, TEQP_IMM(0x0C000001u));                 /* -> FIQ26 */
+    emit(t, MRS(2, 0));
+    emit(t, EXIT);
+    run(t);
+    CHECK_EQ(t->cpu.r[1], ARM6_SVC26);
+    CHECK_EQ(t->cpu.r[2], ARM6_I | ARM6_F | ARM6_FIQ26);
+}
+
 /* ------------------------------------------------------------------ */
 /* modi a 32 bit                                                      */
 /* ------------------------------------------------------------------ */
@@ -737,6 +752,7 @@ int main(void)
     RUN_TEST(address_exception_only_with_26bit_data);
     RUN_TEST(undefined_26bit_config_enters_svc26);
     RUN_TEST(msr_32bit_mode_needs_p);
+    RUN_TEST(clearing_p_falls_back_to_26bit_mode);
     RUN_TEST(r15_32bit_and_high_pc);
     RUN_TEST(mode_banks_32bit);
     RUN_TEST(swi_32bit_spsr_and_return);

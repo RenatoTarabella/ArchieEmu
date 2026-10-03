@@ -11,10 +11,12 @@ lessons learned that are not obvious from the code.
   ARM610/710, 26/32-bit modes, CP15 and MMU inside the core), `src/core` bus, `src/hle` + `src/riscos` RISC OS in HLE
   (kernel SWIs, VDU driver, HostFS, module loader), `src/machine` the BBC BASIC
   machine, `src/archie` the low-level Archimedes (MEMC1a, IOC, VIDC1a, keyboard,
-  CMOS, WD1772), `src/frontend` Win32 and console front ends.
+  CMOS, WD1772), `src/riscpc` the Risc PC (IOMD, VIDC20; plan and status in
+  `docs/riscpc-plan.md`), `src/frontend` Win32 and console front ends.
 - Executables: `armwin` / `armbasic` (BASIC machine, window / console),
   `archie` (Archimedes window), `archie_boot` (headless Archimedes for
-  diagnostics), `armemu`, `romdis`, `modinfo`.
+  diagnostics), `riscpc_boot` (headless Risc PC), `armemu`, `romdis` (`-3` for
+  ARMv3), `modinfo`.
 - `disc/` is the BASIC machine's HostFS disc (`name,ffb` = tokenised BASIC).
 - `roms/` (RISC OS ROMs) and `ADF/` (floppy images) exist only locally and are
   **git-ignored: never commit or redistribute them**. The default ROM is
@@ -28,7 +30,7 @@ Windows: MSVC 2022 through CMake (no gcc). macOS: see below.
 
 ```
 cmake --build build --config Release
-build\Release\test_arm2.exe   (also test_arm6, test_basic, test_memc, test_vidc, test_kbd, test_cmos, test_fdc, test_keys_es ROM)
+build\Release\test_arm2.exe   (also test_arm6, test_iomd, test_basic, test_memc, test_vidc, test_kbd, test_cmos, test_fdc, test_keys_es ROM)
 .venv\Scripts\python tests\diff_unicorn.py        # ARM2 ALU oracle against Unicorn
 .venv\Scripts\python tests\diff_unicorn_arm6.py   # ARMv3 core, 32-bit modes, against Unicorn (SA1100)
 ```
@@ -65,6 +67,12 @@ type long test lines. The tools for that:
   `{F12}` `{ENTER}` `{VKxx}` `{SVKxx}` `{ALTnnn}` `{RESET}` `{WAIT}` (5 s); typing
   starts at 15 s of emulated time. Other options: `--ram --cmos --trace-vectors
   --hist --trace-abort --wav`. It prints the POST report.
+- Risc PC: `riscpc_boot [--rom "roms/1. Major/ROM350"] --ms 8000 --png out.png
+  [--vram 0|1|2] [--ram MB] [--arm710]`. It lists every access to an unknown
+  address; for debugging: `--trace-io`, `--watch-io lo hi`, `--trace-modes`,
+  `--watch-low`, `--break pc`, `--ring N` (last instructions before the first
+  abort), `--trace N --trace-at instr`, `--hist`. ROM350 reaches the desktop
+  in about 8 s of emulated time.
 - Wimp applications must be started from the desktop: `*run` from the F12 command
   line fails with "Wimp is currently active". Use `filer_run :0.!App` instead.
   `filer_opendir` opens a directory window.

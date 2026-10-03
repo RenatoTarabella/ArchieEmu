@@ -106,6 +106,26 @@ target_link_libraries(archie_boot archiecore)
 add_executable(romdis tools/romdis.c)
 target_link_libraries(romdis armcore)
 
+# ---------------------------------------------------------------------------
+# Macchina Risc PC (ARM610/710, IOMD, VIDC20) con RISC OS 3.5-3.7
+# ---------------------------------------------------------------------------
+add_library(riscpccore STATIC
+    src/riscpc/iomd.c
+    src/riscpc/vidc20.c
+    src/riscpc/riscpc.c
+    src/archie/cmos.c
+)
+target_include_directories(riscpccore PUBLIC src src/riscpc)
+target_link_libraries(riscpccore armcore)
+
+add_executable(test_iomd tests/test_iomd.c src/riscpc/iomd.c)
+target_include_directories(test_iomd PRIVATE src/riscpc)
+add_test(NAME iomd COMMAND test_iomd)
+
+# Avvio del Risc PC da riga di comando (diagnostica del boot)
+add_executable(riscpc_boot tools/riscpc_boot.c)
+target_link_libraries(riscpc_boot riscpccore)
+
 # Riferimento sul PC per il Juggler di Eric Graham (rt1.c in double e in float)
 add_executable(juggler_ref tools/juggler_ref.c src/frontend/png.c)
 add_executable(juggler_ref_f tools/juggler_ref.c src/frontend/png.c)

@@ -798,7 +798,17 @@ static int exec_cp15(Arm6 *c, uint32_t i)
 
     uint32_t v = rd == 15 ? r15_full(c, 8) : c->r[rd];      /* MCR */
     switch (crn) {
-    case 1:  c->ctrl = v & 0x3FFu; arm6_tlb_flush(c); break;
+    case 1:
+        c->ctrl = v & 0x3FFu;
+        arm6_tlb_flush(c);
+        /* configurazione a 26 bit: i modi a 32 bit non esistono piu', la
+           CPU resta nel modo a 26 bit corrispondente (il POST di RISC OS
+           3.5 spegne P in SVC32 e poi usa TEQP come sull'ARM2) */
+        if (!(c->ctrl & ARM6_CTRL_P) && !is26(c)) {
+            arm6_set_cpsr(c, c->cpsr & ~0x10u);
+            c->r[15] &= PC26_MASK;
+        }
+        break;
     case 2:  c->ttb = v & 0xFFFFC000u; arm6_tlb_flush(c); break;
     case 3:  c->dacr = v; arm6_tlb_flush(c); break;
     case 5:                                                    /* svuota il TLB */

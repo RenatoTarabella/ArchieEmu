@@ -1,16 +1,29 @@
-ArchieEmu - Acorn Archimedes A3000/A310 (portable, Windows 64-bit)
-==================================================================
+ArchieEmu - Acorn Archimedes and Risc PC (portable, Windows 64-bit)
+===================================================================
 
-A low-level Archimedes: the ARM2 runs the real RISC OS ROM and talks to the
-emulated MEMC, IOC and VIDC chips, floppy drives, keyboard, mouse and sound.
+Low-level Acorn machines running the real RISC OS ROMs:
+- an Archimedes A3000/A310 (ARM2, MEMC, IOC, VIDC, floppy, sound) with Arthur
+  and RISC OS up to 3.11;
+- a Risc PC (ARM610, ARM710 or StrongARM, IOMD, VIDC20, PS/2 keyboard, PC
+  floppy, IDE hard disc, 8 and 16-bit sound) with RISC OS 3.5, 3.6 and 3.7.
 
-THE RISC OS ROM IS NOT INCLUDED (it is copyrighted). Put your RISC OS 3.11 ROM
-image, as a single 2 MB file, here:
+THE RISC OS ROMS ARE NOT INCLUDED (they are copyrighted). Put your ROM images
+in the "roms" folder (any subfolder), named by version, for example:
 
-    roms\1. Major\ROM311
+    roms\1. Major\ROM311     RISC OS 3.11 (Archimedes)
+    roms\1. Major\ROM350     RISC OS 3.50 (Risc PC; also ROM360, ROM370, ROM371)
 
-or start the emulator with:  archie.exe --rom path\to\ROM311
-The CMOS settings are saved next to the ROM (ROM311.cmos).
+At startup a dialog asks which machine to start, with ROM, processor, RAM and
+VRAM; the choice is remembered (ArchieEmu.ini) and Machine > Choose another
+machine... brings the dialog back. archie.exe --rom path\to\ROM311 skips it.
+The CMOS settings are saved next to each ROM (ROM311.cmos, ROM350.cmos...).
+
+Risc PC: the StrongARM needs RISC OS 3.7, as on the real machine. Disc > New
+hard disc image creates a formatted hard disc (64-512 MB) that appears as
+HardDisc4; Disc > Hard disc image attaches an existing .hdf. The keyboard is a
+UK PC keyboard; symbols are translated from your Windows layout. Archimedes
+games often do not run on a Risc PC (as on the real one); applications usually
+do. Not emulated yet: CD-ROM, network, serial port; RISC OS 3.8 does not boot.
 
 HostFS: the "HostFS" folder next to archie.exe is a disc in RISC OS, with its
 own icon on the icon bar. Copy RISC OS software into it from Windows, or save
@@ -25,15 +38,17 @@ screen mode. With a CMOS saved by an older version, type once at the F12
 command line:  *Configure FileSystem HostFS  and  *Configure Boot
 
 Floppy disc images (.adf, ADFS 800 KB, or .hfe flux images, which keep the
-original copy protection) can go in the "ADF" folder. Insert one
-with Ctrl+F9 or by dropping the file on the window, or from the command line:
+original copy protection; on the Risc PC also 1.6 MB and DOS discs) can go
+in the "ADF" folder. Insert one from the Disc menu or by dropping the file on
+the window, or from the command line:
   archie.exe --floppy game.adf --floppy2 disc2.adf
 
-Commands are in the window's menu bar: Disc (insert, eject), Machine (Turbo,
-Sound, Reset) and Mouse. No key is taken away from RISC OS.
+Commands are in the window's menu bar: Disc (floppies, hard disc), Machine
+(Turbo, Sound, RAM, Reset, Choose another machine) and Mouse. No key is taken
+away from RISC OS.
   Ctrl+Alt     pressed and released alone: free the mouse (click in the window
                to capture it again)
-  Ctrl+Break   (Ctrl+Pause) reset, as on the Archimedes
+  Ctrl+Break   (Ctrl+Pause) reset, as on the real machines
 
 Mouse as on the Archimedes: left = Select, middle = Menu, right = Adjust. For a
 mouse without a middle button: Mouse > Right button is Menu (or --right-menu).

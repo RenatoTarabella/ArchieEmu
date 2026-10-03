@@ -19,11 +19,24 @@ is a suffix). TEXTSAVE / TEXTLOAD use plain text listings.
 
 ArchieEmu Archimedes
 --------------------
-A low-level Acorn Archimedes running the real RISC OS ROM.
+Low-level Acorn machines running the real RISC OS ROMs: an Archimedes
+A3000/A310 (ARM2) with Arthur and RISC OS up to 3.11, and a Risc PC (ARM610,
+ARM710 or StrongARM, PC floppy, IDE hard disc, 16-bit sound) with RISC OS 3.5,
+3.6 and 3.7.
 
-THE RISC OS ROM IS NOT INCLUDED (it is copyrighted). On first run you are asked
-for your RISC OS 3.11 ROM image (a single 2 MB file): it is copied to
-Documents/ArchieEmu/roms/ROM311, and the CMOS settings are saved next to it.
+THE RISC OS ROMS ARE NOT INCLUDED (they are copyrighted). Put your ROM images
+in Documents/ArchieEmu/roms, named by version: ROM311 for RISC OS 3.11,
+ROM350, ROM360, ROM370, ROM371 for the Risc PC. If there is none, the first
+run asks for a RISC OS 3.11 ROM image and copies it there. At startup a dialog
+asks which machine to start, with ROM, processor, RAM and VRAM; Machine >
+Choose Another Machine... brings it back. The CMOS settings are saved next to
+each ROM.
+
+Risc PC: the StrongARM needs RISC OS 3.7, as on the real machine. Machine >
+New Hard Disc Image creates a formatted hard disc (64-512 MB) that appears as
+HardDisc4; Hard Disc Image attaches an existing .hdf. Archimedes games often
+do not run on a Risc PC (as on the real one); applications usually do. Not
+emulated yet: CD-ROM, network, serial port; RISC OS 3.8 does not boot.
 
 HostFS: the folder Documents/ArchieEmu/HostFS is a disc in RISC OS, with its
 own icon on the icon bar. Copy RISC OS software into it from the Mac, or save

@@ -1,2 +1,5 @@
 # file per RISC OS: righe con LF, mai convertite
 tools/dist/HostFS/** -text
+# script per sh e testi per Linux: sempre LF
+*.sh text eol=lf
+tools/dist/README-Linux.txt text eol=lf

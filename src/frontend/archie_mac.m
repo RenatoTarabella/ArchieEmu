@@ -926,7 +926,7 @@ static int run_splash(MachineChoice *c, int *found)
     sc.archie = [NSButton radioButtonWithTitle:@"Acorn Archimedes   (ARM2, Arthur and RISC OS up to 3.11)"
                                         target:sc action:@selector(machineChanged:)];
     sc.archie.frame = NSMakeRect(20, 234, 440, 22);
-    sc.riscpc = [NSButton radioButtonWithTitle:@"Acorn Risc PC   (ARM610/ARM710, RISC OS 3.5 to 3.8)"
+    sc.riscpc = [NSButton radioButtonWithTitle:@"Acorn Risc PC   (ARM6/ARM7/StrongARM, RISC OS 3.5 to 3.7)"
                                         target:sc action:@selector(machineChanged:)];
     sc.riscpc.frame = NSMakeRect(20, 210, 440, 22);
     sc.archie.enabled = have[0];

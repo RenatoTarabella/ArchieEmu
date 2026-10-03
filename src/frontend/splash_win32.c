@@ -334,7 +334,7 @@ int splash_choose(HINSTANCE inst, MachineChoice *c)
     add("STATIC", "Choose the machine to start", 0, S(22), S(50), S(400), S(20), -1, sp.font);
     sp.archie = add("BUTTON", "Acorn Archimedes   (ARM2, Arthur and RISC OS up to 3.11)",
                     BS_AUTORADIOBUTTON | WS_TABSTOP | WS_GROUP, S(22), S(82), S(430), S(22), ID_ARCHIE, sp.font);
-    sp.riscpc = add("BUTTON", "Acorn Risc PC   (ARM610/ARM710, RISC OS 3.5 to 3.8)",
+    sp.riscpc = add("BUTTON", "Acorn Risc PC   (ARM6/ARM7/StrongARM, RISC OS 3.5 to 3.7)",
                     BS_AUTORADIOBUTTON, S(22), S(106), S(430), S(22), ID_RISCPC, sp.font);
     EnableWindow(sp.archie, have[0]);
     EnableWindow(sp.riscpc, have[1]);

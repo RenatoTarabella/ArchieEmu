@@ -148,6 +148,11 @@ type long test lines. The tools for that:
 - Risc PC floppy (ADFS on RISC OS 3.5): DMA through FIQ, data at `&03012000`,
   last byte with terminal count at `&0302A000`; index pulses on IRQA bit 2
   (needed to see a disc); /DSKCHG on IOCR bit 2. Details in docs/riscpc-plan.md.
+- Calibrate the pointer against RISC OS itself, never against assumptions about
+  the cursor image: `MOUSE X%,Y%,B%:PRINT X%,Y%` in BASIC gives the real
+  position, then find the drawn tip in the PNG. The Risc PC arrow sits 21
+  columns inside the 32-pixel cursor; assuming it was at column 0 put every
+  click 21 pixels off (icons only answered on their names).
 - Fixed-point kernels need exact refinement in BASIC at sphere edges; a false hit
   gives a non-unit normal and the specular power overflows ("Number too big").
 

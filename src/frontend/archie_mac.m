@@ -1,5 +1,9 @@
 /*
- * archie_mac.m - Finestra della macchina Archimedes per macOS (Cocoa).
+ * archie_mac.m - Finestra delle macchine Archimedes e Risc PC per macOS (Cocoa).
+ *
+ * Senza --rom si apre una finestra iniziale per scegliere macchina, ROM
+ * (trovate nella cartella roms accanto all'app o in Documents/ArchieEmu/
+ * roms), processore e memoria, ricordate nelle preferenze.
  *
  *   ArchieEmu Archimedes [--rom file] [--floppy disco.adf] [--floppy2 disco.adf]
  *                        [--ram MB] [--mhz N] [--cmos file]
@@ -26,12 +30,15 @@
 #include <string.h>
 #include "archie/archie.h"
 #include "archie_keys.h"
+#include "riscpc/riscpc.h"
+#include "riscpc/hdformat.h"
+#include "romlist.h"
 #include "mac_keys.h"
 
 #define FRAME_HZ   50
 #define TURBO_MHZ  64.0
-#define BUF_W      1024
-#define BUF_H      768
+#define BUF_W      2048
+#define BUF_H      2048
 
 /* ------------------------------------------------------------------ */
 /* audio: AudioQueue alimentata da un anello                          */
@@ -99,12 +106,14 @@ static void audio_close(void)
     audio.ok = 0;
 }
 
+static uint32_t machine_audio(int16_t *out, uint32_t max);
+
 /* prende i campioni prodotti dalla macchina e li mette nell'anello */
-static void audio_pump(Archie *a)
+static void audio_pump(void)
 {
     int16_t tmp[ARCHIE_AUDIO_HZ / 50 * 2];
     uint32_t got;
-    while ((got = archie_audio_read(a, tmp, ARCHIE_AUDIO_HZ / 50)) > 0) {
+    while ((got = machine_audio(tmp, ARCHIE_AUDIO_HZ / 50)) > 0) {
         if (!audio.ok) continue;
         uint32_t wr = atomic_load(&audio.wr), queued = wr - atomic_load(&audio.rd);
         if (queued + got > AUDIO_AHEAD) continue;      /* troppo avanti: si scarta */
@@ -121,6 +130,9 @@ static void audio_pump(Archie *a)
 
 typedef struct App {
     Archie    a;
+    RiscPc    r;
+    int       rpc;                   /* la macchina e' il Risc PC */
+    int       rpc_buttons;           /* tasti del mouse premuti (bit 0 Adjust, 1 Menu, 2 Select) */
     uint32_t  pixels[BUF_W * BUF_H];
     int       disp_w, disp_h;        /* ultima immagine */
     double    mhz;
@@ -149,6 +161,32 @@ static NSView *view;
 static NSCursor *blank_cursor;
 static char adf_dir[PATH_MAX];
 
+/* campioni della macchina (48 kHz stereo per tutte e due) */
+static uint32_t machine_audio(int16_t *out, uint32_t max)
+{
+    return app.rpc ? riscpc_audio_read(&app.r, out, max) : archie_audio_read(&app.a, out, max);
+}
+
+/* le unita' floppy: WD1772 dell'Archimedes o 82077 del Risc PC */
+static Fdc *floppies(void) { return app.rpc ? &app.r.sio.fdc.media : &app.a.fdc; }
+
+/* code: tasto dell'Archimedes (&70 Select, &71 Menu, &72 Adjust) */
+static void mouse_button(int code, int down)
+{
+    if (!app.rpc) { kbd_key(&app.a.kbd, code, down); return; }
+    int bit = code == 0x70 ? 4 : code == 0x71 ? 2 : 1;
+    app.rpc_buttons = down ? app.rpc_buttons | bit : app.rpc_buttons & ~bit;
+    riscpc_mouse_buttons(&app.r, app.rpc_buttons);
+}
+
+static void mouse_move(int dx, int dy)
+{
+    if (app.rpc) riscpc_mouse_move(&app.r, dx, dy);
+    else         kbd_mouse_move(&app.a.kbd, dx, dy);
+}
+
+static void rpc_key(void *ctx, int code, int down) { riscpc_key((RiscPc *)ctx, (uint32_t)code, down); }
+
 static double now_s(void)
 {
     return [NSDate timeIntervalSinceReferenceDate];
@@ -168,7 +206,8 @@ static const char *base_name(const char *p)
 static void update_title(void)
 {
     char t[256];
-    snprintf(t, sizeof t, "Archimedes - %s%s", app.rom_name, app.captured ? "   (Ctrl+Option: free mouse)" : "");
+    snprintf(t, sizeof t, "%s - %s%s", app.rpc ? "Risc PC" : "Archimedes", app.rom_name,
+             app.captured ? "   (Ctrl+Option: free mouse)" : "");
     NSString *s = [NSString stringWithUTF8String:t];
     if (![window.title isEqualToString:s]) window.title = s;
 }
@@ -204,13 +243,14 @@ static void show_message(NSString *title, NSString *text)
 
 static void insert_floppy(int drive, const char *path)
 {
-    fdc_eject(&app.a.fdc, drive);
-    if (fdc_insert(&app.a.fdc, drive, path)) {
+    fdc_eject(floppies(), drive);
+    if (fdc_insert(floppies(), drive, path)) {
         snprintf(app.floppy_name[drive], sizeof app.floppy_name[drive], "%s", base_name(path));
     } else {
         app.floppy_name[drive][0] = 0;
         show_message(@"Archimedes", [NSString stringWithFormat:@"Unrecognised image:\n%s\n\n"
-                                     "An ADFS .adf image (800 KB or 640 KB) or an .hfe is needed.", path]);
+                                     "An ADFS .adf image (800 KB or 640 KB) or an .hfe is needed; on the Risc PC also "
+                                     "ADFS F (1.6 MB) and DOS (720 KB, 1.44 MB).", path]);
     }
     update_title();
 }
@@ -219,7 +259,7 @@ static void insert_floppy(int drive, const char *path)
 static void sync_floppy_names(void)
 {
     for (int d = 0; d < 2; d++) {
-        const FdcDrive *fd = &app.a.fdc.drive[d];
+        const FdcDrive *fd = &floppies()->drive[d];
         const char *name = fd->image ? base_name(fd->path) : "";
         if (strcmp(name, app.floppy_name[d])) {
             snprintf(app.floppy_name[d], sizeof app.floppy_name[d], "%s", name);
@@ -230,7 +270,7 @@ static void sync_floppy_names(void)
 
 static void eject_floppy(int drive)
 {
-    fdc_eject(&app.a.fdc, drive);
+    fdc_eject(floppies(), drive);
     app.floppy_name[drive][0] = 0;
     update_title();
 }
@@ -279,10 +319,43 @@ static void choose_floppy(int drive)
     snprintf(adf_dir, sizeof adf_dir, "%s", path.stringByDeletingLastPathComponent.fileSystemRepresentation);
 }
 
+/* Disco fisso del Risc PC: un'immagine esistente (new_mb = 0) o una nuova
+   di new_mb MB gia' formattata ADFS (hdformat.c); la macchina riparte. */
+static void choose_hd(int new_mb)
+{
+    capture_mouse(0);
+    NSString *path = nil;
+    if (new_mb) {
+        NSSavePanel *p = [NSSavePanel savePanel];
+        p.title = @"New hard disc image";
+        p.nameFieldStringValue = @"HardDisc4.hdf";
+        if ([p runModal] != NSModalResponseOK) { release_modifiers(); return; }
+        path = p.URL.path;
+        if (!hdf_create(path.fileSystemRepresentation, (uint32_t)new_mb, "HardDisc4", 0)) {
+            show_message(@"Risc PC", @"Could not create the image.");
+            return;
+        }
+    } else {
+        NSOpenPanel *p = [NSOpenPanel openPanel];
+        p.title = @"Hard disc image for drive :4";
+        if ([p runModal] != NSModalResponseOK) { release_modifiers(); return; }
+        path = p.URL.path;
+    }
+    release_modifiers();
+    [window makeKeyAndOrderFront:nil];
+    if (!riscpc_attach_hd(&app.r, path.fileSystemRepresentation)) {
+        show_message(@"Risc PC", @"Not a hard disc image.");
+        return;
+    }
+    [NSUserDefaults.standardUserDefaults setObject:path forKey:@"HardDiscRiscPC"];
+    riscpc_reset(&app.r);
+}
+
 static void toggle_turbo(void)
 {
     app.turbo = !app.turbo;
-    archie_set_mhz(&app.a, app.turbo ? TURBO_MHZ : app.mhz);
+    if (app.rpc) riscpc_set_mhz(&app.r, app.turbo ? 200.0 : app.mhz);
+    else         archie_set_mhz(&app.a, app.turbo ? TURBO_MHZ : app.mhz);
     update_title();
 }
 
@@ -290,7 +363,7 @@ static void mouse_moved(NSEvent *e)
 {
     if (app.captured) {
         int dx = (int)e.deltaX, dy = (int)e.deltaY;
-        if (dx || dy) kbd_mouse_move(&app.a.kbd, dx, -dy);
+        if (dx || dy) mouse_move(dx, -dy);
         return;
     }
     NSPoint p = e.locationInWindow;
@@ -298,11 +371,13 @@ static void mouse_moved(NSEvent *e)
         /* unita' del mouse Archimedes: circa 2 unita' OS per passo; lo
            schermo e' largo 1280 unita' OS */
         double k = 1280.0 / 2.0 / app.img_w;
+        /* Risc PC: RISC OS muove il puntatore di 1,5 pixel per passo */
+        if (app.rpc) k = (app.disp_w ? app.disp_w : 640) / 1.5 / app.img_w;
         app.acc_x += (p.x - app.last.x) * k;
         app.acc_y += (p.y - app.last.y) * k;            /* in Cocoa la y cresce verso l'alto */
         int dx = (int)app.acc_x, dy = (int)app.acc_y;
         if (dx || dy) {
-            kbd_mouse_move(&app.a.kbd, dx, dy);
+            mouse_move(dx, dy);
             app.acc_x -= dx;
             app.acc_y -= dy;
         }
@@ -342,10 +417,17 @@ static void mouse_moved(NSEvent *e)
 {
     (void)dirty;
     int w = 0, h = 0;
-    VidcTiming t;
-    vidc_timing(&app.a.vidc, &t);
-    if (t.valid) archie_render(&app.a, app.pixels, BUF_W, &w, &h);
-    if (w <= 0 || h <= 0) { w = 640; h = 256; memset(app.pixels, 0, sizeof app.pixels); }
+    uint32_t border;
+    if (app.rpc) {
+        riscpc_render(&app.r, app.pixels, BUF_W, &w, &h);
+        border = riscpc_border_rgb(&app.r);
+    } else {
+        VidcTiming t;
+        vidc_timing(&app.a.vidc, &t);
+        if (t.valid) archie_render(&app.a, app.pixels, BUF_W, &w, &h);
+        border = vidc_border_rgb(&app.a.vidc);
+    }
+    if (w <= 0 || h <= 0) { w = 640; h = app.rpc ? 480 : 256; memset(app.pixels, 0, (size_t)BUF_W * (size_t)h * 4); }
     if (w != app.disp_w || h != app.disp_h) {
         app.disp_w = w;
         app.disp_h = h;
@@ -361,7 +443,6 @@ static void mouse_moved(NSEvent *e)
     app.img_w = sw;
 
     CGContextRef ctx = NSGraphicsContext.currentContext.CGContext;
-    uint32_t border = vidc_border_rgb(&app.a.vidc);
     CGContextSetRGBFillColor(ctx, ((border >> 16) & 255) / 255.0, ((border >> 8) & 255) / 255.0,
                              (border & 255) / 255.0, 1.0);
     CGContextFillRect(ctx, NSRectToCGRect(b));
@@ -429,15 +510,15 @@ static void mouse_moved(NSEvent *e)
 {
     (void)e;
     if (!app.captured) { capture_mouse(1); return; }   /* il primo clic cattura soltanto */
-    kbd_key(&app.a.kbd, 0x70, 1);
+    mouse_button(0x70, 1);
 }
-- (void)mouseUp:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, 0x70, 0); }
+- (void)mouseUp:(NSEvent *)e { (void)e; mouse_button(0x70, 0); }
 /* come sull'Archimedes: centrale = Menu, destro = Adjust; con "Right Button
    Is Menu" (trackpad, mouse a due tasti) il destro fa Menu */
-- (void)rightMouseDown:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, app.right_menu ? 0x71 : 0x72, 1); }
-- (void)rightMouseUp:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, app.right_menu ? 0x71 : 0x72, 0); }
-- (void)otherMouseDown:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, app.right_menu ? 0x72 : 0x71, 1); }
-- (void)otherMouseUp:(NSEvent *)e { (void)e; kbd_key(&app.a.kbd, app.right_menu ? 0x72 : 0x71, 0); }
+- (void)rightMouseDown:(NSEvent *)e { (void)e; mouse_button(app.right_menu ? 0x71 : 0x72, 1); }
+- (void)rightMouseUp:(NSEvent *)e { (void)e; mouse_button(app.right_menu ? 0x71 : 0x72, 0); }
+- (void)otherMouseDown:(NSEvent *)e { (void)e; mouse_button(app.right_menu ? 0x72 : 0x71, 1); }
+- (void)otherMouseUp:(NSEvent *)e { (void)e; mouse_button(app.right_menu ? 0x72 : 0x71, 0); }
 
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)s { (void)s; return NSDragOperationCopy; }
 
@@ -459,7 +540,40 @@ static void mouse_moved(NSEvent *e)
 - (void)toggleTurbo:(id)s { (void)s; toggle_turbo(); }
 - (void)toggleSound:(id)s { (void)s; audio.muted = !audio.muted; }
 - (void)releaseMouse:(id)s { (void)s; capture_mouse(0); }
-- (void)resetMachine:(id)s { (void)s; archie_reset(&app.a); }
+- (void)resetMachine:(id)s
+{
+    (void)s;
+    if (app.rpc) riscpc_reset(&app.r);
+    else         archie_reset(&app.a);
+}
+- (void)chooseMachine:(id)s
+{
+    (void)s;
+    /* un'istanza nuova con la finestra iniziale; questa si chiude */
+    NSWorkspaceOpenConfiguration *c = [NSWorkspaceOpenConfiguration configuration];
+    c.createsNewApplicationInstance = YES;
+    c.arguments = @[ @"--choose" ];
+    [NSWorkspace.sharedWorkspace openApplicationAtURL:NSBundle.mainBundle.bundleURL configuration:c
+                                    completionHandler:^(NSRunningApplication *a, NSError *err) {
+        (void)a;
+        if (!err) dispatch_async(dispatch_get_main_queue(), ^{ [NSApp terminate:nil]; });
+    }];
+}
+- (void)openHardDisc:(id)s { (void)s; choose_hd(0); }
+- (void)newHardDisc:(NSMenuItem *)item { choose_hd((int)item.tag); }
+- (void)removeHardDisc:(id)s
+{
+    (void)s;
+    capture_mouse(0);
+    NSAlert *al = [NSAlert new];
+    al.messageText = @"Removing the hard disc restarts the machine.";
+    [al addButtonWithTitle:@"Restart"];
+    [al addButtonWithTitle:@"Cancel"];
+    if ([al runModal] != NSAlertFirstButtonReturn) return;
+    riscpc_detach_hd(&app.r);
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:@"HardDiscRiscPC"];
+    riscpc_reset(&app.r);
+}
 - (void)setRam:(NSMenuItem *)item
 {
     uint32_t mb = (uint32_t)item.tag;
@@ -501,7 +615,8 @@ static void mouse_moved(NSEvent *e)
     (void)n;
     capture_mouse(0);
     audio_close();
-    archie_destroy(&app.a);
+    if (app.rpc) riscpc_destroy(&app.r);
+    else         archie_destroy(&app.a);
 }
 
 - (void)windowDidResignKey:(NSNotification *)n { (void)n; capture_mouse(0); release_modifiers(); }
@@ -523,8 +638,9 @@ static void mouse_moved(NSEvent *e)
         keys_key(&keys, 0x14, 0, 0, 0, now_ms());
     }
     keys_tick(&keys, now_ms());
-    archie_run(&app.a, ARC_MS(1000 / FRAME_HZ));
-    audio_pump(&app.a);
+    if (app.rpc) riscpc_run(&app.r, ARC_MS(1000 / FRAME_HZ));
+    else         archie_run(&app.a, ARC_MS(1000 / FRAME_HZ));
+    audio_pump();
     sync_floppy_names();
     view.needsDisplay = YES;
     app.next += 1.0 / FRAME_HZ;
@@ -597,7 +713,7 @@ static void build_menu(void)
     NSMenuItem *app_item = [NSMenuItem new];
     [bar addItem:app_item];
     NSMenu *app_menu = [NSMenu new];
-    [app_menu addItemWithTitle:@"Quit Archimedes" action:@selector(terminate:) keyEquivalent:@"q"];
+    [app_menu addItemWithTitle:@"Quit ArchieEmu" action:@selector(terminate:) keyEquivalent:@"q"];
     app_item.submenu = app_menu;
 
     NSMenuItem *m_item = [NSMenuItem new];
@@ -617,51 +733,316 @@ static void build_menu(void)
     NSMenuItem *rm = [m addItemWithTitle:@"Right Button Is Menu" action:@selector(toggleRightMenu:) keyEquivalent:@""];
     rm.state = app.right_menu ? NSControlStateValueOn : NSControlStateValueOff;
     [m addItem:NSMenuItem.separatorItem];
-    for (int mb = 1; mb <= 4; mb *= 2) {
-        NSString *t = mb == 1 ? @"RAM 1 MB (A3000)" : [NSString stringWithFormat:@"RAM %d MB", mb];
-        NSMenuItem *r = [m addItemWithTitle:t action:@selector(setRam:) keyEquivalent:@""];
-        r.tag = mb;
-        r.state = (app.a.ram_size >> 20) == (uint32_t)mb ? NSControlStateValueOn : NSControlStateValueOff;
+    if (app.rpc) {
+        [m addItemWithTitle:@"Hard Disc Image (:4)..." action:@selector(openHardDisc:) keyEquivalent:@""];
+        NSMenuItem *nh = [m addItemWithTitle:@"New Hard Disc Image" action:nil keyEquivalent:@""];
+        NSMenu *sizes = [[NSMenu alloc] initWithTitle:@"New Hard Disc Image"];
+        for (int mb = 64; mb <= 512; mb *= 2) {
+            NSMenuItem *it = [sizes addItemWithTitle:[NSString stringWithFormat:@"%d MB...", mb]
+                                              action:@selector(newHardDisc:) keyEquivalent:@""];
+            it.tag = mb;
+        }
+        nh.submenu = sizes;
+        [m addItemWithTitle:@"Remove Hard Disc" action:@selector(removeHardDisc:) keyEquivalent:@""];
+    } else {
+        for (int mb = 1; mb <= 4; mb *= 2) {
+            NSString *t = mb == 1 ? @"RAM 1 MB (A3000)" : [NSString stringWithFormat:@"RAM %d MB", mb];
+            NSMenuItem *r = [m addItemWithTitle:t action:@selector(setRam:) keyEquivalent:@""];
+            r.tag = mb;
+            r.state = (app.a.ram_size >> 20) == (uint32_t)mb ? NSControlStateValueOn : NSControlStateValueOff;
+        }
     }
     [m addItem:NSMenuItem.separatorItem];
     NSMenuItem *rst = [m addItemWithTitle:@"Reset" action:@selector(resetMachine:) keyEquivalent:@"r"];
     rst.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    [m addItemWithTitle:@"Choose Another Machine..." action:@selector(chooseMachine:) keyEquivalent:@""];
     m_item.submenu = m;
     NSApp.mainMenu = bar;
+}
+
+/* ------------------------------------------------------------------ */
+/* finestra iniziale: quale macchina                                   */
+/* ------------------------------------------------------------------ */
+
+typedef struct MacRom { char path[PATH_MAX]; char label[160]; int version, riscpc; } MacRom;
+static MacRom roms[128];
+static int nroms;
+
+static int cmp_rom(const void *a, const void *b)
+{
+    const MacRom *x = a, *y = b;
+    return x->version != y->version ? x->version - y->version : strcmp(x->path, y->path);
+}
+
+static void scan_rom_dir(NSString *dir, NSString *sub)
+{
+    NSString *d = sub ? [dir stringByAppendingPathComponent:sub] : dir;
+    for (NSString *f in [NSFileManager.defaultManager contentsOfDirectoryAtPath:d error:nil]) {
+        NSString *full = [d stringByAppendingPathComponent:f];
+        BOOL isdir = NO;
+        if (![NSFileManager.defaultManager fileExistsAtPath:full isDirectory:&isdir] || isdir) continue;
+        int rpc, v = romlist_version(f.UTF8String, &rpc);
+        if (!v || nroms >= 128) continue;
+        MacRom *r = &roms[nroms++];
+        snprintf(r->path, sizeof r->path, "%s", full.fileSystemRepresentation);
+        char name[64];
+        romlist_name(v, name, sizeof name);
+        const char *extra = f.UTF8String + 6;
+        snprintf(r->label, sizeof r->label, "%s%s%s   (%s)", name, *extra ? " " : "", extra,
+                 sub ? sub.UTF8String : "roms");
+        r->version = v;
+        r->riscpc = rpc;
+    }
+}
+
+/* la cartella roms accanto all'app (o piu' su) e Documents/ArchieEmu/roms */
+static void scan_roms(void)
+{
+    nroms = 0;
+    NSMutableArray *dirs = [NSMutableArray new];
+    for (NSString *r in @[ @"roms", @"../roms", @"../../roms", @"../../../roms" ])
+        [dirs addObject:[app_folder() stringByAppendingPathComponent:r].stringByStandardizingPath];
+    [dirs addObject:user_folder(@"roms")];
+    NSMutableSet *seen = [NSMutableSet new];
+    for (NSString *d in dirs) {
+        BOOL isdir = NO;
+        if (![NSFileManager.defaultManager fileExistsAtPath:d isDirectory:&isdir] || !isdir) continue;
+        NSString *real = d.stringByResolvingSymlinksInPath;
+        if ([seen containsObject:real]) continue;
+        [seen addObject:real];
+        scan_rom_dir(d, nil);
+        for (NSString *sub in [NSFileManager.defaultManager contentsOfDirectoryAtPath:d error:nil]) {
+            NSString *full = [d stringByAppendingPathComponent:sub];
+            if (![NSFileManager.defaultManager fileExistsAtPath:full isDirectory:&isdir] || !isdir) continue;
+            if ([sub rangeOfString:@"NCOS"].location != NSNotFound) continue;   /* Network Computer */
+            scan_rom_dir(d, sub);
+        }
+    }
+    qsort(roms, (size_t)nroms, sizeof roms[0], cmp_rom);
+}
+
+typedef struct MachineChoice {
+    int  riscpc, cpu710, ram_mb, vram_mb;
+    char rom[PATH_MAX], rom_name[64];
+} MachineChoice;
+
+@interface SplashController : NSObject
+@property NSButton *archie, *riscpc, *start;
+@property NSPopUpButton *rom, *cpu, *ram, *vram;
+@property NSTextField *vramLabel;
+@property int rpc;
+@property NSMutableArray<NSNumber *> *romIndex;
+@end
+
+@implementation SplashController
+
+- (void)fill
+{
+    NSUserDefaults *u = NSUserDefaults.standardUserDefaults;
+    int rpc = self.rpc;
+    NSString *want = [u stringForKey:rpc ? @"RomRiscPC" : @"RomArchimedes"];
+    [self.rom removeAllItems];
+    self.romIndex = [NSMutableArray new];
+    NSInteger sel = -1, fallback = -1;
+    for (int i = 0; i < nroms; i++) {
+        if (roms[i].riscpc != rpc) continue;
+        /* direttamente nel menu: addItemWithTitle scarterebbe i titoli uguali */
+        [self.rom.menu addItemWithTitle:[NSString stringWithUTF8String:roms[i].label] action:nil keyEquivalent:@""];
+        if (want && !strcmp(want.fileSystemRepresentation, roms[i].path)) sel = (NSInteger)self.romIndex.count;
+        if (roms[i].version == (rpc ? 350 : 311) && fallback < 0) fallback = (NSInteger)self.romIndex.count;
+        [self.romIndex addObject:@(i)];
+    }
+    if (sel < 0) sel = fallback >= 0 ? fallback : (NSInteger)self.romIndex.count - 1;
+    if (sel >= 0) [self.rom selectItemAtIndex:sel];
+
+    [self.cpu removeAllItems];
+    if (rpc) {
+        [self.cpu addItemsWithTitles:@[ @"ARM610, 30 MHz (Risc PC 600)", @"ARM710, 40 MHz (Risc PC 700)" ]];
+        [self.cpu selectItemAtIndex:[u boolForKey:@"CPU710"] ? 1 : 0];
+    } else {
+        [self.cpu addItemWithTitle:@"ARM2, 8 MHz"];
+    }
+    self.cpu.enabled = rpc;
+
+    [self.ram removeAllItems];
+    NSArray *sizes = rpc ? @[ @4, @8, @16, @32, @64 ] : @[ @1, @2, @4 ];
+    NSInteger want_ram = [u integerForKey:rpc ? @"RamRiscPC" : @"RamArchimedes"];
+    if (!want_ram) want_ram = rpc ? 16 : 4;
+    for (NSNumber *n in sizes) {
+        [self.ram addItemWithTitle:[NSString stringWithFormat:@"%@ MB%@", n,
+                                    !rpc && n.intValue == 1 ? @" (A3000)" : @""]];
+        if (n.integerValue == want_ram) [self.ram selectItemAtIndex:self.ram.numberOfItems - 1];
+    }
+
+    [self.vram removeAllItems];
+    [self.vram addItemsWithTitles:@[ @"None (screen in DRAM)", @"1 MB", @"2 MB" ]];
+    NSInteger v = [u objectForKey:@"VRAM"] ? [u integerForKey:@"VRAM"] : 2;
+    [self.vram selectItemAtIndex:v >= 0 && v <= 2 ? v : 2];
+    self.vram.enabled = rpc;
+    self.vramLabel.textColor = rpc ? NSColor.labelColor : NSColor.disabledControlTextColor;
+    self.start.enabled = self.romIndex.count > 0;
+}
+
+- (void)machineChanged:(NSButton *)b
+{
+    self.rpc = b == self.riscpc;
+    self.archie.state = self.rpc ? NSControlStateValueOff : NSControlStateValueOn;
+    self.riscpc.state = self.rpc ? NSControlStateValueOn : NSControlStateValueOff;
+    [self fill];
+}
+
+- (void)startPressed:(id)s { (void)s; [NSApp stopModalWithCode:NSModalResponseOK]; }
+- (void)quitPressed:(id)s { (void)s; [NSApp stopModalWithCode:NSModalResponseCancel]; }
+
+@end
+
+static NSTextField *label(NSString *text, NSRect r, NSFont *font)
+{
+    NSTextField *t = [NSTextField labelWithString:text];
+    t.frame = r;
+    t.font = font;
+    return t;
+}
+
+/* ritorna 0 se l'utente rinuncia (o non ci sono ROM: allora found = 0) */
+static int run_splash(MachineChoice *c, int *found)
+{
+    scan_roms();
+    *found = nroms > 0;
+    if (!nroms) return 0;
+    int have[2] = { 0, 0 };
+    for (int i = 0; i < nroms; i++) have[roms[i].riscpc] = 1;
+
+    NSWindow *w = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 480, 340)
+                                              styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
+    w.title = @"ArchieEmu";
+    NSView *v = w.contentView;
+    SplashController *sc = [SplashController new];
+    NSFont *f = [NSFont systemFontOfSize:13];
+    [v addSubview:label(@"ArchieEmu", NSMakeRect(20, 290, 300, 32), [NSFont systemFontOfSize:24 weight:NSFontWeightSemibold])];
+    [v addSubview:label(@"Choose the machine to start", NSMakeRect(22, 266, 400, 20), f)];
+    sc.archie = [NSButton radioButtonWithTitle:@"Acorn Archimedes   (ARM2, Arthur and RISC OS up to 3.11)"
+                                        target:sc action:@selector(machineChanged:)];
+    sc.archie.frame = NSMakeRect(20, 234, 440, 22);
+    sc.riscpc = [NSButton radioButtonWithTitle:@"Acorn Risc PC   (ARM610/ARM710, RISC OS 3.5 to 3.8)"
+                                        target:sc action:@selector(machineChanged:)];
+    sc.riscpc.frame = NSMakeRect(20, 210, 440, 22);
+    sc.archie.enabled = have[0];
+    sc.riscpc.enabled = have[1];
+    [v addSubview:sc.archie];
+    [v addSubview:sc.riscpc];
+
+    int y = 170;
+    [v addSubview:label(@"RISC OS", NSMakeRect(20, y + 3, 95, 20), f)];
+    sc.rom = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(118, y, 342, 26) pullsDown:NO];
+    [v addSubview:sc.rom];
+    y -= 34;
+    [v addSubview:label(@"Processor", NSMakeRect(20, y + 3, 95, 20), f)];
+    sc.cpu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(118, y, 342, 26) pullsDown:NO];
+    [v addSubview:sc.cpu];
+    y -= 34;
+    [v addSubview:label(@"RAM", NSMakeRect(20, y + 3, 95, 20), f)];
+    sc.ram = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(118, y, 170, 26) pullsDown:NO];
+    [v addSubview:sc.ram];
+    y -= 34;
+    sc.vramLabel = label(@"VRAM", NSMakeRect(20, y + 3, 95, 20), f);
+    [v addSubview:sc.vramLabel];
+    sc.vram = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(118, y, 170, 26) pullsDown:NO];
+    [v addSubview:sc.vram];
+
+    sc.start = [NSButton buttonWithTitle:@"Start" target:sc action:@selector(startPressed:)];
+    sc.start.frame = NSMakeRect(270, 16, 96, 30);
+    sc.start.keyEquivalent = @"\r";
+    NSButton *quit = [NSButton buttonWithTitle:@"Quit" target:sc action:@selector(quitPressed:)];
+    quit.frame = NSMakeRect(370, 16, 96, 30);
+    quit.keyEquivalent = @"\e";
+    [v addSubview:sc.start];
+    [v addSubview:quit];
+
+    int rpc = [NSUserDefaults.standardUserDefaults boolForKey:@"RiscPC"] ? 1 : 0;
+    if (!have[rpc]) rpc = !rpc;
+    [sc machineChanged:rpc ? sc.riscpc : sc.archie];
+    [w center];
+    NSModalResponse r = [NSApp runModalForWindow:w];
+    [w orderOut:nil];
+    if (r != NSModalResponseOK || sc.rom.indexOfSelectedItem < 0) return 0;
+
+    const MacRom *rom = &roms[sc.romIndex[(NSUInteger)sc.rom.indexOfSelectedItem].intValue];
+    c->riscpc = sc.rpc;
+    snprintf(c->rom, sizeof c->rom, "%s", rom->path);
+    romlist_name(rom->version, c->rom_name, sizeof c->rom_name);
+    c->cpu710 = sc.rpc && sc.cpu.indexOfSelectedItem == 1;
+    c->ram_mb = [sc.ram.titleOfSelectedItem intValue];
+    c->vram_mb = sc.rpc ? (int)sc.vram.indexOfSelectedItem : 0;
+
+    NSUserDefaults *u = NSUserDefaults.standardUserDefaults;
+    [u setBool:c->riscpc forKey:@"RiscPC"];
+    [u setObject:[NSString stringWithUTF8String:c->rom] forKey:c->riscpc ? @"RomRiscPC" : @"RomArchimedes"];
+    [u setInteger:c->ram_mb forKey:c->riscpc ? @"RamRiscPC" : @"RamArchimedes"];
+    if (c->riscpc) { [u setBool:c->cpu710 forKey:@"CPU710"]; [u setInteger:c->vram_mb forKey:@"VRAM"]; }
+    return 1;
 }
 
 int main(int argc, char **argv)
 {
     @autoreleasepool {
         ArchieConfig cfg = { NULL, 4, NULL, { NULL, NULL }, 8, NULL };
-        app.mhz = 8;
+        int force_rpc = 0, arm710 = 0, choose = 0, vram = -1;
+        uint32_t ram = 0;
+        double mhz = 0;
         for (int i = 1; i < argc; i++) {
             if (!strcmp(argv[i], "--rom") && i + 1 < argc) cfg.rom_path = argv[++i];
             else if (!strcmp(argv[i], "--floppy") && i + 1 < argc) cfg.floppy[0] = argv[++i];
             else if (!strcmp(argv[i], "--floppy2") && i + 1 < argc) cfg.floppy[1] = argv[++i];
-            else if (!strcmp(argv[i], "--ram") && i + 1 < argc) cfg.ram_mb = (uint32_t)atoi(argv[++i]);
-            else if (!strcmp(argv[i], "--mhz") && i + 1 < argc) app.mhz = atof(argv[++i]);
+            else if (!strcmp(argv[i], "--ram") && i + 1 < argc) ram = (uint32_t)atoi(argv[++i]);
+            else if (!strcmp(argv[i], "--vram") && i + 1 < argc) vram = atoi(argv[++i]);
+            else if (!strcmp(argv[i], "--mhz") && i + 1 < argc) mhz = atof(argv[++i]);
             else if (!strcmp(argv[i], "--cmos") && i + 1 < argc) cfg.cmos_path = argv[++i];
             else if (!strcmp(argv[i], "--hostfs") && i + 1 < argc) cfg.hostfs_dir = argv[++i];
+            else if (!strcmp(argv[i], "--riscpc")) force_rpc = 1;
+            else if (!strcmp(argv[i], "--arm710")) arm710 = 1;
+            else if (!strcmp(argv[i], "--choose")) choose = 1;
             else if (argv[i][0] != '-' && !cfg.floppy[0]) cfg.floppy[0] = argv[i];
         }
-        if (app.mhz <= 0) app.mhz = 8;
-        cfg.mhz = app.mhz;
         app.right_menu = [NSUserDefaults.standardUserDefaults boolForKey:@"RightButtonIsMenu"];
 
         [NSApplication sharedApplication];
         NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
         [NSApp activateIgnoringOtherApps:YES];
 
+        /* quale macchina: la finestra iniziale, oppure --rom (la macchina dal nome della ROM) */
         static char rom_buf[PATH_MAX], cmos_buf[PATH_MAX];
-        if (!cfg.rom_path && !(cfg.rom_path = find_rom(rom_buf, sizeof rom_buf))) return 1;
+        MachineChoice mc;
+        memset(&mc, 0, sizeof mc);
+        if (!cfg.rom_path && (choose || !cfg.floppy[0])) {
+            int found = 0;
+            if (run_splash(&mc, &found)) {
+                snprintf(rom_buf, sizeof rom_buf, "%s", mc.rom);
+                cfg.rom_path = rom_buf;
+                app.rpc = mc.riscpc;
+                if (!ram) ram = (uint32_t)mc.ram_mb;
+                if (vram < 0) vram = mc.vram_mb;
+                arm710 = mc.cpu710;
+                snprintf(app.rom_name, sizeof app.rom_name, "%s", mc.rom_name);
+            } else if (found) {
+                return 0;                                       /* Quit */
+            }
+        }
+        if (!cfg.rom_path) {
+            /* nessuna ROM nelle cartelle: la si chiede (RISC OS 3.11 per l'Archimedes) */
+            if (!(cfg.rom_path = find_rom(rom_buf, sizeof rom_buf))) return 1;
+        }
+        if (!app.rom_name[0]) {
+            int rpc = 0, v = romlist_version(cfg.rom_path, &rpc);
+            app.rpc = rpc || force_rpc;
+            if (v) romlist_name(v, app.rom_name, sizeof app.rom_name);
+            else   snprintf(app.rom_name, sizeof app.rom_name, "%s", base_name(cfg.rom_path));
+        }
         if (!cfg.cmos_path) {
             /* la CMOS si salva accanto alla ROM, una per ogni versione */
             snprintf(cmos_buf, sizeof cmos_buf, "%s.cmos", cfg.rom_path);
             cfg.cmos_path = cmos_buf;
         }
-        snprintf(app.rom_name, sizeof app.rom_name, "%s", base_name(cfg.rom_path));
-        if (!strcmp(app.rom_name, "ROM311")) snprintf(app.rom_name, sizeof app.rom_name, "RISC OS 3.11");
         for (int d = 0; d < 2; d++)
             if (cfg.floppy[d]) snprintf(app.floppy_name[d], sizeof app.floppy_name[d], "%s", base_name(cfg.floppy[d]));
 
@@ -671,19 +1052,40 @@ int main(int argc, char **argv)
         if (![NSFileManager.defaultManager fileExistsAtPath:adf isDirectory:&isdir] || !isdir) adf = user_folder(@"ADF");
         snprintf(adf_dir, sizeof adf_dir, "%s", adf.fileSystemRepresentation);
 
-        /* il disco HostFS: accanto all'app se c'e' una cartella HostFS, altrimenti in Documents */
-        static char hostfs_buf[PATH_MAX];
-        if (!cfg.hostfs_dir) {
-            NSString *hfs = [app_folder() stringByAppendingPathComponent:@"HostFS"];
-            if (![NSFileManager.defaultManager fileExistsAtPath:hfs isDirectory:&isdir] || !isdir) hfs = user_folder(@"HostFS");
-            snprintf(hostfs_buf, sizeof hostfs_buf, "%s", hfs.fileSystemRepresentation);
-            cfg.hostfs_dir = hostfs_buf;
-        }
-
         char err[300];
-        if (!archie_create(&app.a, &cfg, err, sizeof err)) {
-            show_message(@"Archimedes", [NSString stringWithUTF8String:err]);
-            return 1;
+        if (app.rpc) {
+            RiscPcConfig rcfg = { 0 };
+            rcfg.rom_path = cfg.rom_path;
+            rcfg.cmos_path = cfg.cmos_path;
+            rcfg.ram_mb = ram ? ram : 16;
+            rcfg.vram_mb = vram >= 0 ? (uint32_t)vram : 2;
+            rcfg.arm710 = arm710;
+            rcfg.mhz = mhz > 0 ? mhz : (arm710 ? 40 : 30);
+            app.mhz = rcfg.mhz;
+            if (!riscpc_create(&app.r, &rcfg, err, sizeof err)) {
+                show_message(@"Risc PC", [NSString stringWithUTF8String:err]);
+                return 1;
+            }
+            for (int d = 0; d < 2; d++)
+                if (cfg.floppy[d]) riscpc_insert_floppy(&app.r, d, cfg.floppy[d]);
+            NSString *hd = [NSUserDefaults.standardUserDefaults stringForKey:@"HardDiscRiscPC"];
+            if (hd.length) riscpc_attach_hd(&app.r, hd.fileSystemRepresentation);
+        } else {
+            /* il disco HostFS: accanto all'app se c'e' una cartella HostFS, altrimenti in Documents */
+            static char hostfs_buf[PATH_MAX];
+            if (!cfg.hostfs_dir) {
+                NSString *hfs = [app_folder() stringByAppendingPathComponent:@"HostFS"];
+                if (![NSFileManager.defaultManager fileExistsAtPath:hfs isDirectory:&isdir] || !isdir) hfs = user_folder(@"HostFS");
+                snprintf(hostfs_buf, sizeof hostfs_buf, "%s", hfs.fileSystemRepresentation);
+                cfg.hostfs_dir = hostfs_buf;
+            }
+            cfg.ram_mb = ram ? ram : 4;
+            app.mhz = mhz > 0 ? mhz : 8;
+            cfg.mhz = app.mhz;
+            if (!archie_create(&app.a, &cfg, err, sizeof err)) {
+                show_message(@"Archimedes", [NSString stringWithUTF8String:err]);
+                return 1;
+            }
         }
 
         AppDelegate *delegate = [AppDelegate new];
@@ -708,7 +1110,8 @@ int main(int argc, char **argv)
         update_title();
         [window makeKeyAndOrderFront:nil];
 
-        keys_init(&keys, &app.a.kbd);
+        if (app.rpc) keys_init_ps2(&keys, rpc_key, &app.r);
+        else         keys_init(&keys, &app.a.kbd);
         audio_open();
         app.next = now_s();
         NSTimer *t = [NSTimer timerWithTimeInterval:0.004 target:delegate selector:@selector(tick:)

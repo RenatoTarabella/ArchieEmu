@@ -157,7 +157,7 @@ endforeach()
 # Finestra della macchina Archimedes
 if(WIN32)
     add_executable(archie WIN32 src/frontend/archie_win32.c src/frontend/archie_keys.c
-                   src/frontend/splash_win32.c res/armwin.rc)
+                   src/frontend/splash_win32.c src/frontend/romlist.c res/armwin.rc)
     target_include_directories(archie PRIVATE src/frontend)
     target_link_libraries(archie riscpccore archiecore winmm shell32 comdlg32)
     if(MSVC)
@@ -182,7 +182,7 @@ if(APPLE)
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/res/mac/Info-basic.plist.in)
 
     add_executable(archie MACOSX_BUNDLE src/frontend/archie_mac.m src/frontend/archie_keys.c
-                   src/frontend/mac_keys.c ${MAC_ICON})
+                   src/frontend/mac_keys.c src/frontend/romlist.c ${MAC_ICON})
     target_include_directories(archie PRIVATE src/frontend)
     target_link_libraries(archie riscpccore archiecore "-framework Cocoa" "-framework Carbon" "-framework AudioToolbox")
     set_target_properties(archie PROPERTIES OUTPUT_NAME "ArchieEmu Archimedes"

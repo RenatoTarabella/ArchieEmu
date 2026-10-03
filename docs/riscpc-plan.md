@@ -141,7 +141,7 @@ codice copiato in questo progetto MIT.
    byte a quelle di HForm a 64, 100, 128, 256 e 512 MB (a parita' di disc
    ID); per le altre dimensioni i parametri si scelgono con una regola che
    RISC OS accetta (`*CheckMap`: "Map good").
-6. **VIDC20 completo e suono** (fatto su Windows):
+6. **VIDC20 completo e suono** (fatto):
    - tempi dai registri: clock dei pixel = 24 MHz * (V+1)/(R+1) del
      sintetizzatore (FSYN), diviso per i bit 4-2 del controllo + 1; righe
      di HCR + 8 pixel, frame di VCR + 2 righe, flyback dalla riga VDER
@@ -155,8 +155,12 @@ codice copiato in questo progetto MIT.
    - suono a 8 bit logaritmico come il VIDC1 (8 canali, posizioni stereo
      &A0-&A7, un byte ogni SFR + 2 us): `SOUND 1,-15,89,50` da' 436 Hz come
      sull'Archimedes; `riscpc_boot --wav`; nella finestra il menu Sound.
-   Manca: il suono a 16 bit (RISC OS 3.6/3.7 con la scheda), il Mac (la
-   finestra iniziale e il Risc PC nel frontend Cocoa).
+   - Mac: la stessa finestra iniziale in Cocoa (`archie_mac.m`, preferenze
+     in NSUserDefaults; le ROM dalla cartella roms accanto all'app o in
+     Documents/ArchieEmu/roms), il Risc PC con floppy, disco fisso e suono,
+     "Choose Another Machine..."; il riconoscimento delle ROM e' comune
+     (`romlist.c`).
+   Manca: il suono a 16 bit (RISC OS 3.6/3.7 con la scheda).
 7. **ARM710**, poi StrongARM e RISC OS 3.7 o 3.8.
 
 Ogni passo si chiude con i test e con la ROM che arriva un po' piu' avanti

@@ -2,6 +2,7 @@
  * splash_win32.c - Finestra iniziale per scegliere la macchina (vedi splash_win32.h)
  */
 #include "splash_win32.h"
+#include "romlist.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,31 +21,8 @@ typedef struct RomEntry {
 static RomEntry roms[128];
 static int nroms;
 
-int splash_rom_version(const char *path, int *riscpc)
-{
-    const char *s = strrchr(path, '\\'), *t = strrchr(path, '/');
-    if (t && (!s || t > s)) s = t;
-    s = s ? s + 1 : path;
-    *riscpc = 0;
-    if (_strnicmp(s, "ROM", 3) || !isdigit((unsigned char)s[3]) || !isdigit((unsigned char)s[4]) ||
-        !isdigit((unsigned char)s[5]))
-        return 0;
-    int v = (s[3] - '0') * 100 + (s[4] - '0') * 10 + (s[5] - '0');
-    const char *rest = s + 6;
-    if (!_stricmp(rest, ".cmos") || strstr(rest, ".cmos")) return 0;
-    if (v >= 350) {
-        /* 3.50-3.80 per ARM6/ARM7; la versione StrongARM e RISC OS 4+ non ancora */
-        if (v > 380 || !_stricmp(rest, ".SA")) return 0;
-        *riscpc = 1;
-    }
-    return v;
-}
-
-void splash_rom_name(int v, char *out, size_t size)
-{
-    if (v < 200) snprintf(out, size, "Arthur %d.%02d", v / 100, v % 100);
-    else         snprintf(out, size, "RISC OS %d.%02d", v / 100, v % 100);
-}
+int splash_rom_version(const char *path, int *riscpc) { return romlist_version(path, riscpc); }
+void splash_rom_name(int v, char *out, size_t size) { romlist_name(v, out, size); }
 
 static int cmp_rom(const void *a, const void *b)
 {

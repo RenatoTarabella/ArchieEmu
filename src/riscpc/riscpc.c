@@ -425,7 +425,17 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
     superio_init(&m->sio);
     iomd_init(&m->iomd, &hooks);
     if (cfg->cmos_path) snprintf(m->cmos_path, sizeof m->cmos_path, "%s", cfg->cmos_path);
+    FILE *old = cfg->cmos_path ? fopen(cfg->cmos_path, "rb") : NULL;
+    if (old) fclose(old);
     cmos_init(&m->cmos, cfg->cmos_path);
+    if (!old && cfg->hostfs_dir && cfg->hostfs_dir[0]) {
+        /* CMOS nuova: si avvia da HostFS (FileSystem &99, Boot), dove !Boot
+           carica l'MDF dell'emulatore: senza, il Display Manager non ha modi */
+        m->cmos.ram[0x45] = 0x99;                /* logico &05 FileLangCMOS */
+        m->cmos.ram[0x50] |= 0x10;               /* logico &10 DBTBCMOS: Boot */
+        cmos_fix_checksum(&m->cmos);
+        m->cmos.dirty = 1;
+    }
     m->sda_in = 1;
     if (cfg->hostfs_dir && cfg->hostfs_dir[0]) {
         /* scheda 0 con il modulo HostFS: RISC OS lo carica all'avvio */

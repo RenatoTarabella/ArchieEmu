@@ -300,9 +300,17 @@ modes. **Disc > New hard disc image** creates a ready-formatted disc of 64 to
 remembered.
 
 Good to know:
-- Without a boot disc the Apps folder is empty and only the numbered screen
-  modes (up to 256 colours) exist: both come from `!Boot` on disc (the monitor
-  definition files give the 16 and 32 bpp modes).
+- Screen modes: from RISC OS 3.5 the Display Manager (the monitor icon) only
+  offers what a monitor definition file (MDF) lists; without one every choice
+  gives "The Display Manager does not support that combination of colours and
+  resolution". HostFS has a `!Boot` that loads `Monitors.ArchieEmu`, an MDF
+  for the emulator (640x480 to 1280x1024 at 60 Hz, up to 16 million colours
+  as far as the VRAM allows, plus the classic resolutions at 50 Hz for the
+  numbered modes; `tools/mkmdf.py` writes it). A new Risc PC CMOS boots from
+  HostFS; with an older one type `*Configure FileSystem HostFS` and
+  `*Configure Boot` once. The HostFS module runs `HostFS:$.!Boot` at power-on
+  when it is the boot filing system, also on the Archimedes.
+- Without the Risc PC's own `!Boot` the Apps folder is empty.
 - Archimedes games often do not run on a Risc PC, as on the real machine;
   applications usually do.
 - Timing is not cycle-exact yet: caches and memory bandwidth are not modelled.

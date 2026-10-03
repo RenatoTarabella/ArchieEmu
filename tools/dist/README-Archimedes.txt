@@ -19,6 +19,10 @@ in the host names, as in RPCEmu: "Game,ff8" is Absolute, "Prog,ffb" is BASIC.
 A "!System" folder at the top of HostFS is registered when you open it (some
 software needs one). To unpack a floppy image into HostFS, with the right types,
 use tools/adfextract.py from the source code on GitHub.
+On the Risc PC, HostFS is the boot disc: its !Boot loads the monitor
+definition (Monitors.ArchieEmu) that the Display Manager needs to change the
+screen mode. With a CMOS saved by an older version, type once at the F12
+command line:  *Configure FileSystem HostFS  and  *Configure Boot
 
 Floppy disc images (.adf, ADFS 800 KB, or .hfe flux images, which keep the
 original copy protection) can go in the "ADF" folder. Insert one

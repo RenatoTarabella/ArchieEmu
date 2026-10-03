@@ -181,8 +181,14 @@ if(APPLE)
     set_target_properties(armwin PROPERTIES OUTPUT_NAME "ArchieEmu BASIC"
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/res/mac/Info-basic.plist.in)
 
+    # !Boot e l'MDF del Risc PC: l'app li copia nella cartella HostFS quando la crea
+    set(MAC_HOSTFS_BOOT "${CMAKE_SOURCE_DIR}/tools/dist/HostFS/!Boot,feb")
+    set(MAC_HOSTFS_MDF "${CMAKE_SOURCE_DIR}/tools/dist/HostFS/Monitors/ArchieEmu,fff")
+    set_source_files_properties(${MAC_HOSTFS_BOOT} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/HostFS)
+    set_source_files_properties(${MAC_HOSTFS_MDF} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/HostFS/Monitors)
     add_executable(archie MACOSX_BUNDLE src/frontend/archie_mac.m src/frontend/archie_keys.c
-                   src/frontend/mac_keys.c src/frontend/romlist.c ${MAC_ICON})
+                   src/frontend/mac_keys.c src/frontend/romlist.c ${MAC_ICON}
+                   ${MAC_HOSTFS_BOOT} ${MAC_HOSTFS_MDF})
     target_include_directories(archie PRIVATE src/frontend)
     target_link_libraries(archie riscpccore archiecore "-framework Cocoa" "-framework Carbon" "-framework AudioToolbox")
     set_target_properties(archie PROPERTIES OUTPUT_NAME "ArchieEmu Archimedes"

@@ -15,6 +15,7 @@
         .equ    XOS_Module,     0x2001E
         .equ    XOS_FSControl,  0x20029
         .equ    XOS_CLI,        0x20005
+        .equ    XOS_File,       0x20008
         .equ    XOS_SetVarVal,  0x20024
         .equ    OS_Exit,        0x11
         .equ    XWimp_Initialise, 0x600C0
@@ -42,7 +43,7 @@ module_base:
         .word   0, 0, 0, 0
 
 title:  .asciz  "HostFS"
-help:   .asciz  "HostFS\t\t1.00 (01 Oct 2026) ArchieEmu"
+help:   .asciz  "HostFS\t\t1.01 (03 Oct 2026) ArchieEmu"
 fsname: .asciz  "HostFS"
 banner: .asciz  "ArchieEmu HostFS"
 taskname: .asciz "HostFS Filer"
@@ -294,5 +295,30 @@ fs_close:    svc #TRAP + 4
              mov pc, lr
 fs_file:     svc #TRAP + 5
              mov pc, lr
-fs_func:     svc #TRAP + 6
+fs_func:     teq r0, #10                        @ Func 10: avvio del filing system
+             beq fs_boot
+             svc #TRAP + 6
              mov pc, lr
+
+@ con *Configure FileSystem HostFS e *Configure Boot, FileSwitch chiama
+@ Func 10 all'accensione: come ADFS, si esegue !Boot se c'e' (sulla cartella
+@ dell'host ne mettiamo uno che carica l'MDF dell'emulatore sulla 3.5-3.7)
+fs_boot:
+        stmfd   sp!, {r0-r5, lr}
+        mov     r0, #17                         @ c'e' HostFS:$.!Boot?
+        adr     r1, boot_name
+        svc     #XOS_File
+        bvs     boot_none
+        teq     r0, #0
+        beq     boot_none
+        adr     r0, boot_cmd
+        svc     #XOS_CLI
+        addvs   sp, sp, #4                      @ errore di !Boot: torna con R0 -> blocco
+        ldmfdvs sp!, {r1-r5, pc}
+boot_none:
+        ldmfd   sp!, {r0-r5, lr}
+        cmn     r0, #0                          @ V spento
+        mov     pc, lr
+boot_name: .asciz "HostFS:$.!Boot"
+boot_cmd:  .asciz "Run HostFS:$.!Boot"
+        .align  2

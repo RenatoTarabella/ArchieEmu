@@ -1,0 +1,2 @@
+# file per RISC OS: righe con LF, mai convertite
+tools/dist/HostFS/** -text

@@ -29,6 +29,8 @@ Copy-Item "$bin\archie.exe", LICENSE $a
 Copy-Item tools\dist\README-Archimedes.txt "$a\README.txt"
 Set-Content -Encoding ascii "$a\roms\1. Major\PUT_ROM311_HERE.txt" "Put your RISC OS 3.11 ROM image here as a file named ROM311 (not included: copyrighted)."
 Set-Content -Encoding ascii "$a\HostFS\ReadMe" "This folder is the HostFS disc of RISC OS: whatever you put here appears in the emulator, and RISC OS can save here."
+# !Boot e l'MDF del Risc PC (il Display Manager della 3.5-3.7 ne ha bisogno)
+Copy-Item -Recurse tools\dist\HostFS\* "$a\HostFS"
 Set-Content -Encoding ascii "$a\ADF\PUT_ADF_IMAGES_HERE.txt" "Put your .adf floppy images here (Ctrl+F9 in the emulator opens this folder)."
 
 foreach ($p in "BASIC", "Archimedes") {

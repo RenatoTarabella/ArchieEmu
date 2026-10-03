@@ -30,6 +30,12 @@ own icon on the icon bar. Copy RISC OS software into it from the Mac, or save
 into it from RISC OS: the files are shared both ways. File types are suffixes
 in the host names, as in RPCEmu: "Game,ff8" is Absolute, "Prog,ffb" is BASIC.
 A "!System" folder at the top of HostFS is registered when you open it.
+On the Risc PC, HostFS is the boot disc: its !Boot loads the monitor
+definition (Monitors.ArchieEmu) that the Display Manager needs to change the
+screen mode. If your HostFS folder existed before this version, copy !Boot,feb
+and Monitors from the app (Show Package Contents > Contents > Resources >
+HostFS) into it, and with an older CMOS type once at the F12 command line:
+*Configure FileSystem HostFS  and  *Configure Boot
 
 Floppy images (.adf, or .hfe flux images that keep the original copy
 protection) can go in Documents/ArchieEmu/ADF. Insert one from the

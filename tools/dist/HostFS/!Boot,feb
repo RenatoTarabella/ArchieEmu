@@ -1,0 +1,8 @@
+| !Boot for ArchieEmu's HostFS: runs at power-on when the CMOS says
+| *Configure FileSystem HostFS and *Configure Boot.
+| On RISC OS 3.5-3.7 it loads the monitor definition for the emulator, so
+| that the Display Manager offers resolutions and colours.
+| RISC OS 3.1 has no ScreenModes module and skips it.
+RMEnsure ScreenModes 0.00 Set ArchieEmu$NoMDF 1
+If "<ArchieEmu$NoMDF>"="" Then LoadModeFile <Obey$Dir>.Monitors.ArchieEmu
+Unset ArchieEmu$NoMDF

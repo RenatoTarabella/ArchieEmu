@@ -150,7 +150,17 @@ codice copiato in questo progetto MIT.
      dalla voce p & &FF, il verde da (p >> 4) & &FF, il blu da (p >> 8) &
      &FF (ricavato dai valori che RISC OS ci scrive); a 32 bpp un byte per
      canale. Senza un MDF RISC OS 3.5 conosce solo i modi numerati (fino a
-     8 bpp): per provare ho caricato un MDF scritto a mano (`*LoadModeFile`);
+     8 bpp) e il Display Manager (che costruisce i menu con OS_ScreenMode 2,
+     l'elenco dei modi dell'MDF) rifiuta ogni scelta. Con un MDF caricato
+     pero' il kernel accetta solo le risoluzioni elencate, anche per i modi
+     numerati: `tools/mkmdf.py` scrive quello dell'emulatore con le
+     risoluzioni classiche a 50 Hz senza nome (`mode_name:` vuoto, obbligatorio
+     ma nascosto nel menu) e i modi VESA col nome. Lo carica `!Boot` su
+     HostFS: il modulo HostFS esegue `HostFS:$.!Boot` su FSEntry_Func 10
+     (avvio del filing system) e una CMOS nuova del Risc PC ha FileSystem &99
+     e Boot. OS_CheckModeValid confronta col solo schermo gia' allocato
+     (&11E4, che il cambio di modo fa crescere): da' "memoria insufficiente"
+     anche quando il modo poi funziona;
    - a 16 e 32 bpp HDSR e' piu' avanti di 2 pixel: il cursore va corretto;
    - suono a 8 bit logaritmico come il VIDC1 (8 canali, posizioni stereo
      &A0-&A7, un byte ogni SFR + 2 us): `SOUND 1,-15,89,50` da' 436 Hz come

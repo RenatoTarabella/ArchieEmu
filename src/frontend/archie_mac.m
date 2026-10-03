@@ -1073,7 +1073,18 @@ int main(int argc, char **argv)
         static char hostfs_buf[PATH_MAX];
         if (!cfg.hostfs_dir) {
             NSString *hfs = [app_folder() stringByAppendingPathComponent:@"HostFS"];
-            if (![NSFileManager.defaultManager fileExistsAtPath:hfs isDirectory:&isdir] || !isdir) hfs = user_folder(@"HostFS");
+            if (![NSFileManager.defaultManager fileExistsAtPath:hfs isDirectory:&isdir] || !isdir) {
+                NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+                BOOL fresh = ![NSFileManager.defaultManager fileExistsAtPath:
+                               [docs stringByAppendingPathComponent:@"ArchieEmu/HostFS"]];
+                hfs = user_folder(@"HostFS");
+                /* cartella nuova: !Boot e l'MDF del Risc PC dalle risorse dell'app */
+                NSString *seed = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"HostFS"];
+                if (fresh)
+                    for (NSString *f in [NSFileManager.defaultManager contentsOfDirectoryAtPath:seed error:nil])
+                        [NSFileManager.defaultManager copyItemAtPath:[seed stringByAppendingPathComponent:f]
+                                                              toPath:[hfs stringByAppendingPathComponent:f] error:nil];
+            }
             snprintf(hostfs_buf, sizeof hostfs_buf, "%s", hfs.fileSystemRepresentation);
             cfg.hostfs_dir = hostfs_buf;
         }

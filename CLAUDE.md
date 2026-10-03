@@ -153,6 +153,13 @@ type long test lines. The tools for that:
   position, then find the drawn tip in the PNG. The Risc PC arrow sits 21
   columns inside the 32-pixel cursor; assuming it was at column 0 put every
   click 21 pixels off (icons only answered on their names).
+- RISC OS 3.5+ screen modes come from the MDF: without one the Display Manager
+  rejects every choice ("does not support that combination"), and with one
+  the kernel only accepts the resolutions it lists, numbered modes included.
+  `tools/mkmdf.py` writes the emulator's MDF; `!Boot` on HostFS loads it
+  (`tools/dist/HostFS`, copied into the packages). OS_CheckModeValid only
+  compares with the screen memory already allocated, so its "not enough
+  memory" does not mean the mode change would fail.
 - Fixed-point kernels need exact refinement in BASIC at sphere edges; a false hit
   gives a non-unit normal and the specular power overflows ("Number too big").
 

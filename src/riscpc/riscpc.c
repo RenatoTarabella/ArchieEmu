@@ -196,6 +196,37 @@ static void bus_w32(void *ctx, uint32_t a, uint32_t v, int *abort)
     io_write(m, a & ~3u, v, 4);
 }
 
+/* mezze parole (LDRH/STRH dello StrongARM): memoria diretta, il dato dell'IDE */
+static uint16_t bus_r16(void *ctx, uint32_t a, int *abort)
+{
+    RiscPc *m = ctx;
+    int ro;
+    (void)abort;
+    uint8_t *p = mem_at(m, a, &ro);
+    if (p) return (uint16_t)(p[0] | p[1] << 8);
+    if ((a & 0xFFFFF000u) == 0x03010000u) {
+        int known;
+        return superio_read16(&m->sio, (a & 0xFFF) >> 2, riscpc_now(m), &known);
+    }
+    return (uint16_t)(io_read(m, a & ~3u, 2) >> ((a & 2) * 8));
+}
+
+static void bus_w16(void *ctx, uint32_t a, uint16_t v, int *abort)
+{
+    RiscPc *m = ctx;
+    int ro;
+    (void)abort;
+    uint8_t *p = mem_at(m, a, &ro);
+    if (p) { if (!ro) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); } return; }
+    if ((a & 0xFFFFF000u) == 0x03010000u) {
+        int known;
+        superio_write16(&m->sio, (a & 0xFFF) >> 2, v, riscpc_now(m), &known);
+        update_lines(m);
+        return;
+    }
+    io_write(m, a & ~3u, v * 0x00010001u, 2);
+}
+
 static void bus_w8(void *ctx, uint32_t a, uint8_t v, int *abort)
 {
     RiscPc *m = ctx;
@@ -388,8 +419,8 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
     m->rom = raw;
     m->rom_size = size;
 
-    ArmBus bus = { m, bus_r32, bus_r8, bus_w32, bus_w8 };
-    arm6_init(&m->cpu, &bus, cfg->arm710 ? ARM6_ID_ARM710 : ARM6_ID_ARM610);
+    ArmBus bus = { m, bus_r32, bus_r8, bus_w32, bus_w8, bus_r16, bus_w16 };
+    arm6_init(&m->cpu, &bus, cfg->strongarm ? ARM6_ID_SA110 : cfg->arm710 ? ARM6_ID_ARM710 : ARM6_ID_ARM610);
     IomdHooks hooks = { m, lines_write, lines_read, to_keyboard, from_keyboard };
     superio_init(&m->sio);
     iomd_init(&m->iomd, &hooks);
@@ -412,7 +443,7 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
         m->cpu.swi_hook = riscpc_swi;
         m->cpu.swi_user = m;
     }
-    m->mhz = cfg->mhz > 0 ? cfg->mhz : (cfg->arm710 ? 40 : 30);
+    m->mhz = cfg->mhz > 0 ? cfg->mhz : cfg->strongarm ? 202 : cfg->arm710 ? 40 : 30;
     update_speed(m);
     riscpc_reset(m);
     return 1;

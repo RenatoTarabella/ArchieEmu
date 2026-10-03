@@ -15,6 +15,9 @@ typedef struct ArmBus {
     uint8_t  (*read8)  (void *ctx, uint32_t addr, int *abort);
     void     (*write32)(void *ctx, uint32_t addr, uint32_t v, int *abort);
     void     (*write8) (void *ctx, uint32_t addr, uint8_t v, int *abort);
+    /* facoltativi (ARMv4, LDRH/STRH): senza, due accessi a byte */
+    uint16_t (*read16) (void *ctx, uint32_t addr, int *abort);
+    void     (*write16)(void *ctx, uint32_t addr, uint16_t v, int *abort);
 } ArmBus;
 
 #endif

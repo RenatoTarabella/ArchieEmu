@@ -183,7 +183,9 @@ static void fill_lists(void)
     if (rpc) {
         SendMessageA(sp.cpu, CB_ADDSTRING, 0, (LPARAM)"ARM610, 30 MHz (Risc PC 600)");
         SendMessageA(sp.cpu, CB_ADDSTRING, 0, (LPARAM)"ARM710, 40 MHz (Risc PC 700)");
-        SendMessageA(sp.cpu, CB_SETCURSEL, ini_int("cpu", CPU_ARM610) == CPU_ARM710 ? 1 : 0, 0);
+        SendMessageA(sp.cpu, CB_ADDSTRING, 0, (LPARAM)"StrongARM, 202 MHz (needs RISC OS 3.7)");
+        int cpu = ini_int("cpu", CPU_ARM610);
+        SendMessageA(sp.cpu, CB_SETCURSEL, cpu == CPU_SA110 ? 2 : cpu == CPU_ARM710 ? 1 : 0, 0);
     } else {
         SendMessageA(sp.cpu, CB_ADDSTRING, 0, (LPARAM)"ARM2, 8 MHz");
         SendMessageA(sp.cpu, CB_SETCURSEL, 0, 0);
@@ -232,7 +234,8 @@ static void splash_accept(void)
     splash_rom_name(r->version, c->rom_name, sizeof c->rom_name);
     int ri = (int)SendMessageA(sp.ram, CB_GETCURSEL, 0, 0);
     c->ram_mb = c->riscpc ? ram_riscpc[ri < 0 ? 2 : ri] : ram_archie[ri < 0 ? 2 : ri];
-    c->cpu = c->riscpc ? ((int)SendMessageA(sp.cpu, CB_GETCURSEL, 0, 0) == 1 ? CPU_ARM710 : CPU_ARM610) : CPU_ARM2;
+    int cs = (int)SendMessageA(sp.cpu, CB_GETCURSEL, 0, 0);
+    c->cpu = c->riscpc ? (cs == 2 ? CPU_SA110 : cs == 1 ? CPU_ARM710 : CPU_ARM610) : CPU_ARM2;
     c->vram_mb = c->riscpc ? (int)SendMessageA(sp.vram, CB_GETCURSEL, 0, 0) : 0;
 
     ini_put_int("riscpc", c->riscpc);

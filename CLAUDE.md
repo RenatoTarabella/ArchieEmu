@@ -34,7 +34,7 @@ Windows: MSVC 2022 through CMake (no gcc). macOS: see below.
 cmake --build build --config Release
 build\Release\test_arm2.exe   (also test_arm6, test_iomd, test_fdc82077, test_ide, test_hdformat, test_vidc20, test_basic, test_memc, test_vidc, test_kbd, test_cmos, test_fdc, test_keys_es ROM)
 .venv\Scripts\python tests\diff_unicorn.py        # ARM2 ALU oracle against Unicorn
-.venv\Scripts\python tests\diff_unicorn_arm6.py   # ARMv3 core, 32-bit modes, against Unicorn (SA1100)
+.venv\Scripts\python tests\diff_unicorn_arm6.py   # ARMv3 core, 32-bit modes, against Unicorn (SA1100); --v4 for StrongARM
 ```
 
 The linker fails if `archie.exe` / `armwin.exe` is still running: close it first.
@@ -70,7 +70,7 @@ type long test lines. The tools for that:
   starts at 15 s of emulated time. Other options: `--ram --cmos --trace-vectors
   --hist --trace-abort --wav`. It prints the POST report.
 - Risc PC: `riscpc_boot [--rom "roms/1. Major/ROM350"] --ms 8000 --png out.png
-  [--vram 0|1|2] [--ram MB] [--arm710] [--cmos file] [--floppy a.adf --floppy2 b.adf]
+  [--vram 0|1|2] [--ram MB] [--arm710 | --strongarm] [--hostfs dir] [--cmos file] [--floppy a.adf --floppy2 b.adf]
   [--hd disc.hdf] (`--create-hd disc.hdf MB` makes an ADFS-formatted image and exits,
   `--blank --create-hd` an empty one); `--wav file` records the sound. `tools/mkhdf.py` does the same in Python
   and documents the new-map format; `--check` compares with images made by HForm.

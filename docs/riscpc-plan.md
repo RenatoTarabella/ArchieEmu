@@ -164,7 +164,17 @@ codice copiato in questo progetto MIT.
    HostFS anche sul Risc PC: la stessa scheda dell'Archimedes nello slot 0
    (&033C0000, un byte per parola), la SWI intercettata dal core ARMv3, la
    memoria logica attraverso la MMU (`arc_hostfs_init_mem`, `HostFsRegs`).
-7. **ARM710**, poi StrongARM e RISC OS 3.7 o 3.8.
+7. **ARM710 e StrongARM** (fatto): l'ARM710 e' l'ARM610 con un altro ID e
+   gli abort "tardivi" (bit L). StrongARM SA-110 (`--strongarm`, 202 MHz):
+   l'ARMv4 nello stesso core (`v4`, attivato dall'ID &4401A102):
+   LDRH/STRH/LDRSB/LDRSH, UMULL/UMLAL/SMULL/SMLAL, CP15 con il controllo
+   fino al bit 12 e P/D sempre accesi, TLB in c8; il bus ha gli accessi a
+   16 bit (facoltativi). Confronto con Unicorn come SA1100:
+   `diff_unicorn_arm6.py --v4`, 0 differenze su 100 000 istruzioni.
+   RISC OS 3.70 e 3.71 arrivano al desktop sullo StrongARM; la 3.50 no,
+   come sulla macchina vera. Da vedere: la 3.80 (versione di sviluppo per
+   il Phoebe) si ferma sullo StrongARM con un IRQ prima del gestore, e
+   sull'ARM6/7 aspetta il modulo ATAPI (CD-ROM IDE non emulato).
 
 Ogni passo si chiude con i test e con la ROM che arriva un po' piu' avanti
 nell'avvio; i tempi (cicli, cache, banda della DRAM e della VRAM) si curano

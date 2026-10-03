@@ -276,4 +276,6 @@ void memc_attach_cpu(Memc *m, ArmBus *bus)
     bus->read8 = cpu_r8;
     bus->write32 = cpu_w32;
     bus->write8 = cpu_w8;
+    bus->read16 = NULL;
+    bus->write16 = NULL;
 }

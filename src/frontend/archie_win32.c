@@ -3,7 +3,7 @@
  *
  *   archie [--rom file] [--floppy disco.adf] [--floppy2 disco.adf]
  *          [--ram MB] [--mhz N] [--cmos file] [--hostfs cartella] [--right-menu]
- *          [--riscpc] [--vram MB] [--arm710]
+ *          [--riscpc] [--vram MB] [--arm710 | --strongarm]
  *
  * Senza --rom si apre la finestra iniziale (splash_win32.c) che fa scegliere
  * macchina, ROM, processore e memoria. Con --rom la macchina si deduce dal
@@ -688,7 +688,7 @@ int main(int argc, char **argv)
 {
     ArchieConfig cfg = { NULL, 4, NULL, { NULL, NULL }, 8, NULL };
     RiscPcConfig rcfg = { 0 };
-    int force_rpc = 0, arm710 = 0, choose = 0, vram = -1;
+    int force_rpc = 0, arm710 = 0, strongarm = 0, choose = 0, vram = -1;
     double mhz = 0;
     uint32_t ram = 0;
     for (int i = 1; i < argc; i++) {
@@ -703,6 +703,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--right-menu")) app.right_menu = 1;
         else if (!strcmp(argv[i], "--riscpc")) force_rpc = 1;
         else if (!strcmp(argv[i], "--arm710")) arm710 = 1;
+        else if (!strcmp(argv[i], "--strongarm")) strongarm = 1;
         else if (!strcmp(argv[i], "--choose")) choose = 1;
         else if (argv[i][0] != '-' && !cfg.floppy[0]) cfg.floppy[0] = argv[i];   /* file aperto con l'eseguibile */
     }
@@ -720,6 +721,7 @@ int main(int argc, char **argv)
         if (!ram) ram = (uint32_t)mc.ram_mb;
         if (vram < 0) vram = mc.vram_mb;
         arm710 = mc.cpu == CPU_ARM710;
+        strongarm = mc.cpu == CPU_SA110;
         snprintf(app.rom_name, sizeof app.rom_name, "%s", mc.rom_name);
     } else {
         if (!cfg.rom_path) {
@@ -749,7 +751,8 @@ int main(int argc, char **argv)
         rcfg.ram_mb = ram ? ram : 16;
         rcfg.vram_mb = vram >= 0 ? (uint32_t)vram : 2;
         rcfg.arm710 = arm710;
-        rcfg.mhz = mhz > 0 ? mhz : (arm710 ? 40 : 30);
+        rcfg.strongarm = strongarm;
+        rcfg.mhz = mhz > 0 ? mhz : strongarm ? 202 : arm710 ? 40 : 30;
         rcfg.hostfs_dir = cfg.hostfs_dir ? cfg.hostfs_dir : hostfs_folder();
         app.mhz = rcfg.mhz;
         if (!riscpc_create(&app.r, &rcfg, err, sizeof err)) {

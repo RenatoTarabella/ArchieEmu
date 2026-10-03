@@ -11,7 +11,7 @@
 
 #include <windows.h>
 
-enum { CPU_ARM2 = 0, CPU_ARM610 = 1, CPU_ARM710 = 2 };
+enum { CPU_ARM2 = 0, CPU_ARM610 = 1, CPU_ARM710 = 2, CPU_SA110 = 3 };
 
 typedef struct MachineChoice {
     int  riscpc;

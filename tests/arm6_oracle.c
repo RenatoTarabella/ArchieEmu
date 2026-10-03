@@ -64,11 +64,13 @@ static void reset_data(void)
     }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     static Arm6 cpu;
-    ArmBus ab = { NULL, r32, r8, w32, w8 };
-    arm6_init(&cpu, &ab, ARM6_ID_ARM610);
+    ArmBus ab = { NULL, r32, r8, w32, w8, NULL, NULL };
+    /* --v4: StrongARM (mezze parole e moltiplicazioni lunghe) */
+    int v4 = argc > 1 && !strcmp(argv[1], "--v4");
+    arm6_init(&cpu, &ab, v4 ? ARM6_ID_SA110 : ARM6_ID_ARM610);
     cpu.ctrl = ARM6_CTRL_P | ARM6_CTRL_D;
 
     unsigned instr, addr, cpsr, spsr, r[15];

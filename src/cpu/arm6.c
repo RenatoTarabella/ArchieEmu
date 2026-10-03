@@ -240,6 +240,7 @@ void arm6_init(Arm6 *c, const ArmBus *bus, uint32_t cpu_id)
     memset(c, 0, sizeof *c);
     c->bus = *bus;
     c->cp15_id = cpu_id;
+    c->v4 = (cpu_id >> 24) == 0x44;          /* Digital: StrongARM */
     c->s_ticks = 1;
     c->n_ticks = 1;
     arm6_reset(c);
@@ -395,6 +396,39 @@ static int store8(Arm6 *c, uint32_t va, int user, uint32_t v)
     int f, abort = 0;
     if ((f = mmu(c, va, 1, user, &pa)) != 0) return fault(c, va, f);
     c->bus.write8(c->bus.ctx, pa, (uint8_t)v, &abort);
+    if (abort) return fault(c, va, 0x08);
+    return 0;
+}
+
+/* mezze parole (ARMv4): con l'allineamento acceso un indirizzo dispari e' un fault */
+static int load16(Arm6 *c, uint32_t va, int user, uint32_t *v)
+{
+    uint32_t pa;
+    int f, abort = 0;
+    if ((c->ctrl & ARM6_CTRL_A) && (va & 1)) return fault(c, va, 0x01);
+    if ((f = mmu(c, va, 0, user, &pa)) != 0) return fault(c, va, f);
+    if (c->bus.read16) {
+        *v = c->bus.read16(c->bus.ctx, pa & ~1u, &abort);
+    } else {
+        uint32_t lo = c->bus.read8(c->bus.ctx, pa & ~1u, &abort);
+        *v = lo | (uint32_t)c->bus.read8(c->bus.ctx, (pa & ~1u) + 1, &abort) << 8;
+    }
+    if (abort) return fault(c, va, 0x08);
+    return 0;
+}
+
+static int store16(Arm6 *c, uint32_t va, int user, uint32_t v)
+{
+    uint32_t pa;
+    int f, abort = 0;
+    if ((c->ctrl & ARM6_CTRL_A) && (va & 1)) return fault(c, va, 0x01);
+    if ((f = mmu(c, va, 1, user, &pa)) != 0) return fault(c, va, f);
+    if (c->bus.write16) {
+        c->bus.write16(c->bus.ctx, pa & ~1u, (uint16_t)v, &abort);
+    } else {
+        c->bus.write8(c->bus.ctx, pa & ~1u, (uint8_t)v, &abort);
+        c->bus.write8(c->bus.ctx, (pa & ~1u) + 1, (uint8_t)(v >> 8), &abort);
+    }
     if (abort) return fault(c, va, 0x08);
     return 0;
 }
@@ -611,6 +645,54 @@ static uint32_t exec_multiply(Arm6 *c, uint32_t i)
     return CYC(1, 0, m, 1);
 }
 
+/* UMULL, UMLAL, SMULL, SMLAL (ARMv4): RdHi:RdLo = Rm * Rs (+ RdHi:RdLo) */
+static uint32_t exec_multiply_long(Arm6 *c, uint32_t i)
+{
+    int hi = (i >> 16) & 15, lo = (i >> 12) & 15, rs = (i >> 8) & 15, rm = i & 15;
+    uint64_t res;
+    if (i & (1u << 22)) res = (uint64_t)((int64_t)(int32_t)c->r[rm] * (int64_t)(int32_t)c->r[rs]);
+    else                res = (uint64_t)c->r[rm] * c->r[rs];
+    if (i & (1u << 21)) res += (uint64_t)c->r[hi] << 32 | c->r[lo];
+    if (lo != 15) c->r[lo] = (uint32_t)res;
+    if (hi != 15) c->r[hi] = (uint32_t)(res >> 32);
+    if (i & (1u << 20))
+        c->cpsr = (c->cpsr & 0x3FFFFFFFu) | ((uint32_t)(res >> 32) & ARM6_N) | (res == 0 ? ARM6_Z : 0);
+    uint32_t vs = c->r[rs];
+    int m = 1;
+    while (m < 4 && (vs >> (8 * m)) && (vs >> (8 * m)) != (0xFFFFFFFFu >> (8 * m))) m++;
+    return CYC(1, 0, m + 1 + ((i >> 21) & 1), 1);
+}
+
+/* LDRH, STRH, LDRSB, LDRSH (ARMv4) */
+static uint32_t exec_halfword(Arm6 *c, uint32_t i)
+{
+    int p = (i >> 24) & 1, u = (i >> 23) & 1, imm = (i >> 22) & 1;
+    int w = (i >> 21) & 1, l = (i >> 20) & 1, sh = (i >> 5) & 3;
+    int rn = (i >> 16) & 15, rd = (i >> 12) & 15;
+    uint32_t offset = imm ? ((i >> 4) & 0xF0) | (i & 0xF) : c->r[i & 15];
+    uint32_t base = rn == 15 ? r15_addr(c, 4) : c->r[rn];
+    uint32_t moved = u ? base + offset : base - offset;
+    uint32_t addr = p ? moved : base;
+    int writeback = (!p || w) && rn != 15;
+    int user = is_user(c);
+    if (l) {
+        uint32_t v;
+        int ab = sh == 2 ? load8(c, addr, user, &v) : load16(c, addr, user, &v);
+        if (ab) { data_abort(c); return CYC_EXCEPTION; }
+        if (sh == 2) v = (uint32_t)(int32_t)(int8_t)v;           /* LDRSB */
+        else if (sh == 3) v = (uint32_t)(int32_t)(int16_t)v;     /* LDRSH */
+        if (writeback) c->r[rn] = moved;
+        if (rd == 15) { arm6_set_pc(c, v); return CYC(2, 2, 1, 3); }
+        c->r[rd] = v;
+        return CYC(1, 1, 1, 1);
+    }
+    if (sh != 1) return 0;                                         /* solo STRH */
+    uint32_t v = rd == 15 ? r15_full(c, 8) : c->r[rd];
+    if (store16(c, addr, user, v)) { data_abort(c); return CYC_EXCEPTION; }
+    if (writeback) c->r[rn] = moved;
+    return CYC(0, 2, 0, 1);
+}
+
 static uint32_t exec_swap(Arm6 *c, uint32_t i)
 {
     int rn = (i >> 16) & 15, rd = (i >> 12) & 15, rm = i & 15;
@@ -799,7 +881,8 @@ static int exec_cp15(Arm6 *c, uint32_t i)
     uint32_t v = rd == 15 ? r15_full(c, 8) : c->r[rd];      /* MCR */
     switch (crn) {
     case 1:
-        c->ctrl = v & 0x3FFu;
+        /* StrongARM: bit fino al 12 (cache delle istruzioni); P e D sempre a 1 */
+        c->ctrl = c->v4 ? (v & 0x1FFFu) | ARM6_CTRL_P | ARM6_CTRL_D : v & 0x3FFu;
         arm6_tlb_flush(c);
         /* configurazione a 26 bit: i modi a 32 bit non esistono piu', la
            CPU resta nel modo a 26 bit corrispondente (il POST di RISC OS
@@ -812,8 +895,9 @@ static int exec_cp15(Arm6 *c, uint32_t i)
     case 2:  c->ttb = v & 0xFFFFC000u; arm6_tlb_flush(c); break;
     case 3:  c->dacr = v; arm6_tlb_flush(c); break;
     case 5:                                                    /* svuota il TLB */
-    case 6:  arm6_tlb_flush(c); break;                         /* toglie una voce */
-    default: break;                                            /* c7: svuota la cache */
+    case 6:                                                    /* toglie una voce */
+    case 8:  arm6_tlb_flush(c); break;                         /* StrongARM: operazioni sul TLB */
+    default: break;                                            /* c7 cache, c9, c15: niente da fare */
     }
     return 1;
 }
@@ -872,6 +956,9 @@ int arm6_step(Arm6 *c)
         switch ((i >> 25) & 7) {
         case 0:
             if ((i & 0x0FC000F0u) == 0x00000090u)      cyc = exec_multiply(c, i);
+            else if (c->v4 && (i & 0x0F8000F0u) == 0x00800090u) cyc = exec_multiply_long(c, i);
+            else if (c->v4 && (i & 0x0E000090u) == 0x00000090u && (i & 0x60u) &&
+                     (cyc = exec_halfword(c, i)) != 0) ;
             else if ((i & 0x0FB00FF0u) == 0x01000090u) cyc = exec_swap(c, i);
             else if ((i & 0x90u) == 0x90u)             goto undefined;
             else if ((i & 0x01900000u) == 0x01000000u) cyc = exec_psr_transfer(c, i);

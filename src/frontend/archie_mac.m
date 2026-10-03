@@ -822,7 +822,7 @@ static void scan_roms(void)
 }
 
 typedef struct MachineChoice {
-    int  riscpc, cpu710, ram_mb, vram_mb;
+    int  riscpc, cpu, ram_mb, vram_mb;         /* cpu: 0 ARM610, 1 ARM710, 2 StrongARM */
     char rom[PATH_MAX], rom_name[64];
 } MachineChoice;
 
@@ -857,8 +857,10 @@ typedef struct MachineChoice {
 
     [self.cpu removeAllItems];
     if (rpc) {
-        [self.cpu addItemsWithTitles:@[ @"ARM610, 30 MHz (Risc PC 600)", @"ARM710, 40 MHz (Risc PC 700)" ]];
-        [self.cpu selectItemAtIndex:[u boolForKey:@"CPU710"] ? 1 : 0];
+        [self.cpu addItemsWithTitles:@[ @"ARM610, 30 MHz (Risc PC 600)", @"ARM710, 40 MHz (Risc PC 700)",
+                                        @"StrongARM, 202 MHz (needs RISC OS 3.7)" ]];
+        NSInteger cpu = [u integerForKey:@"CPU"];
+        [self.cpu selectItemAtIndex:cpu >= 0 && cpu <= 2 ? cpu : 0];
     } else {
         [self.cpu addItemWithTitle:@"ARM2, 8 MHz"];
     }
@@ -971,7 +973,7 @@ static int run_splash(MachineChoice *c, int *found)
     c->riscpc = sc.rpc;
     snprintf(c->rom, sizeof c->rom, "%s", rom->path);
     romlist_name(rom->version, c->rom_name, sizeof c->rom_name);
-    c->cpu710 = sc.rpc && sc.cpu.indexOfSelectedItem == 1;
+    c->cpu = sc.rpc ? (int)sc.cpu.indexOfSelectedItem : 0;
     c->ram_mb = [sc.ram.titleOfSelectedItem intValue];
     c->vram_mb = sc.rpc ? (int)sc.vram.indexOfSelectedItem : 0;
 
@@ -979,7 +981,7 @@ static int run_splash(MachineChoice *c, int *found)
     [u setBool:c->riscpc forKey:@"RiscPC"];
     [u setObject:[NSString stringWithUTF8String:c->rom] forKey:c->riscpc ? @"RomRiscPC" : @"RomArchimedes"];
     [u setInteger:c->ram_mb forKey:c->riscpc ? @"RamRiscPC" : @"RamArchimedes"];
-    if (c->riscpc) { [u setBool:c->cpu710 forKey:@"CPU710"]; [u setInteger:c->vram_mb forKey:@"VRAM"]; }
+    if (c->riscpc) { [u setInteger:c->cpu forKey:@"CPU"]; [u setInteger:c->vram_mb forKey:@"VRAM"]; }
     return 1;
 }
 
@@ -987,7 +989,7 @@ int main(int argc, char **argv)
 {
     @autoreleasepool {
         ArchieConfig cfg = { NULL, 4, NULL, { NULL, NULL }, 8, NULL };
-        int force_rpc = 0, arm710 = 0, choose = 0, vram = -1;
+        int force_rpc = 0, arm710 = 0, strongarm = 0, choose = 0, vram = -1;
         uint32_t ram = 0;
         double mhz = 0;
         for (int i = 1; i < argc; i++) {
@@ -1001,6 +1003,7 @@ int main(int argc, char **argv)
             else if (!strcmp(argv[i], "--hostfs") && i + 1 < argc) cfg.hostfs_dir = argv[++i];
             else if (!strcmp(argv[i], "--riscpc")) force_rpc = 1;
             else if (!strcmp(argv[i], "--arm710")) arm710 = 1;
+            else if (!strcmp(argv[i], "--strongarm")) strongarm = 1;
             else if (!strcmp(argv[i], "--choose")) choose = 1;
             else if (argv[i][0] != '-' && !cfg.floppy[0]) cfg.floppy[0] = argv[i];
         }
@@ -1022,7 +1025,8 @@ int main(int argc, char **argv)
                 app.rpc = mc.riscpc;
                 if (!ram) ram = (uint32_t)mc.ram_mb;
                 if (vram < 0) vram = mc.vram_mb;
-                arm710 = mc.cpu710;
+                arm710 = mc.cpu == 1;
+                strongarm = mc.cpu == 2;
                 snprintf(app.rom_name, sizeof app.rom_name, "%s", mc.rom_name);
             } else if (found) {
                 return 0;                                       /* Quit */
@@ -1069,7 +1073,8 @@ int main(int argc, char **argv)
             rcfg.ram_mb = ram ? ram : 16;
             rcfg.vram_mb = vram >= 0 ? (uint32_t)vram : 2;
             rcfg.arm710 = arm710;
-            rcfg.mhz = mhz > 0 ? mhz : (arm710 ? 40 : 30);
+            rcfg.strongarm = strongarm;
+            rcfg.mhz = mhz > 0 ? mhz : strongarm ? 202 : arm710 ? 40 : 30;
             rcfg.hostfs_dir = cfg.hostfs_dir;
             app.mhz = rcfg.mhz;
             if (!riscpc_create(&app.r, &rcfg, err, sizeof err)) {

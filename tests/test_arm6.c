@@ -719,6 +719,42 @@ TEST(pipeline_self_modifying)
     CHECK_EQ(t->cpu.r[5], 5);
 }
 
+TEST(strongarm_v4)
+{
+    /* SA-110: ID, P e D sempre accesi, mezze parole e moltiplicazioni lunghe */
+    T *t = setup(ARM6_SVC26);
+    t->cpu.cp15_id = ARM6_ID_SA110;
+    t->cpu.v4 = 1;
+    poke(t, 0x1000, 0x8001FF80u);
+    emit(t, MRC15(0, 0));
+    emit(t, DPI(MOV, 0, 0, 1, 0));
+    emit(t, MCR15(1, 1));                           /* controllo = 0 */
+    emit(t, MRC15(1, 2));
+    emit(t, DPI(MOV, 0, 0, 3, 0x1000));
+    emit(t, 0xE1D340F0u);                           /* LDRSH R4,[R3,#0]  -> &FFFFFF80 */
+    emit(t, 0xE1D350F2u);                           /* LDRSH R5,[R3,#2]  -> &FFFF8001 */
+    emit(t, 0xE1D360D1u);                           /* LDRSB R6,[R3,#1]  -> &FFFFFFFF */
+    emit(t, 0xE1C341B4u);                           /* STRH R4,[R3,#20] */
+    emit(t, 0xE0C87594u);                           /* SMULL R7,R8,R4,R5 */
+    emit(t, EXIT);
+    run(t);
+    CHECK_EQ(t->cpu.r[0], ARM6_ID_SA110);
+    CHECK_EQ(t->cpu.r[2], ARM6_CTRL_P | ARM6_CTRL_D);
+    CHECK_EQ(t->cpu.r[4], 0xFFFFFF80u);
+    CHECK_EQ(t->cpu.r[5], 0xFFFF8001u);
+    CHECK_EQ(t->cpu.r[6], 0xFFFFFFFFu);
+    CHECK_EQ(peek(t, 0x1014), 0xFF80);
+    /* -128 * -32767 = 4194176 */
+    CHECK_EQ(t->cpu.r[7], 4194176u);
+    CHECK_EQ(t->cpu.r[8], 0);
+
+    /* sull'ARM610 le stesse istruzioni non esistono */
+    t = setup(ARM6_SVC26);
+    emit(t, 0xE1D340F0u);
+    run(t);
+    CHECK_EQ(t->exception, ARM6_VEC_UNDEF);
+}
+
 TEST(disassembler_v3)
 {
     struct { uint32_t i; uint32_t addr; const char *text; } cases[] = {
@@ -770,6 +806,7 @@ int main(void)
     RUN_TEST(mmu_cp15_programming);
     RUN_TEST(alignment_fault);
     RUN_TEST(pipeline_self_modifying);
+    RUN_TEST(strongarm_v4);
     RUN_TEST(disassembler_v3);
 
     printf("%d controlli, %d falliti\n", checks, failures);

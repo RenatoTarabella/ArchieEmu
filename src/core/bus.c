@@ -116,4 +116,6 @@ void bus_attach_cpu(Bus *bus, ArmBus *out)
     out->read8 = cpu_r8;
     out->write32 = cpu_w32;
     out->write8 = cpu_w8;
+    out->read16 = NULL;
+    out->write16 = NULL;
 }

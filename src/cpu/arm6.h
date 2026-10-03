@@ -1,5 +1,5 @@
 /*
- * arm6.h - Modulo CPU: ARMv3 (ARM610 e ARM710, Risc PC)
+ * arm6.h - Modulo CPU: ARMv3 (ARM610 e ARM710, Risc PC) e ARMv4 (StrongARM SA-110)
  *
  * Spazio d'indirizzi a 32 bit, CPSR separato dal PC e un SPSR per ogni modo
  * privilegiato. Restano i modi a 26 bit dell'ARM2 (R15 letto come PC + PSR),
@@ -58,6 +58,7 @@ enum {
 /* ID letti da MRC p15,0,Rd,c0,c0 */
 #define ARM6_ID_ARM610 0x41560610u
 #define ARM6_ID_ARM710 0x41007100u
+#define ARM6_ID_SA110  0x4401A102u   /* StrongARM: ARMv4 (mezze parole, moltiplicazioni lunghe) */
 
 /* TLB software: una voce per blocco da 1 KB (la granularita' delle
    sottopagine), mappata direttamente */
@@ -96,6 +97,7 @@ typedef struct Arm6 {
 
     /* CP15 */
     uint32_t cp15_id;
+    int      v4;             /* ARMv4 (StrongARM): LDRH/STRH/LDRSB/LDRSH, UMULL & co. */
     uint32_t ctrl;           /* c1 */
     uint32_t ttb;            /* c2 */
     uint32_t dacr;           /* c3 */
@@ -119,7 +121,7 @@ typedef struct Arm6 {
     int      pipe_valid;
 } Arm6;
 
-/* cpu_id: ARM6_ID_ARM610 o ARM6_ID_ARM710 */
+/* cpu_id: ARM6_ID_ARM610, ARM6_ID_ARM710 o ARM6_ID_SA110 */
 void     arm6_init(Arm6 *cpu, const ArmBus *bus, uint32_t cpu_id);
 /* Reset: SVC26, IRQ e FIQ disabilitati, PC = 0, CP15 azzerato (MMU spenta,
    configurazione a 26 bit) */

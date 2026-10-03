@@ -7,7 +7,7 @@
  *   riscpc_boot --rom ROM350 [--ms 3000] [--png schermo.png] [--ram 16] [--vram 1]
  *               [--hostfs cartella] [--floppy a.adf] [--floppy2 b.adf] [--hd disco.hdf] [--blank] [--wav suono.wav] [--create-hd disco.hdf MB]
  *               [--keys "testo{ENTER}"] [--keys-at ms]   (vedi riscpc_keys.h; da 10 s)
- *               [--arm710] [--trace-io] [--trace-vectors] [--hist] [--trace N] [--trace-at istr]
+ *               [--arm710 | --strongarm] [--trace-io] [--trace-vectors] [--hist] [--trace N] [--trace-at istr]
  *               [--trace-modes] [--watch-low] [--break pc] [--watch-io lo hi] [--ring N]   (le ultime N istruzioni prima del primo abort o undef)
  */
 #include <stdio.h>
@@ -211,6 +211,7 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(a, "--break") && v && break_count < 16) { break_pc[break_count++] = (uint32_t)strtoul(v, NULL, 16); i++; }
         else if (!strcmp(a, "--arm710"))     cfg.arm710 = 1;
+        else if (!strcmp(a, "--strongarm"))  cfg.strongarm = 1;
         else if (!strcmp(a, "--trace-io"))   trace_io = 1;
         else if (!strcmp(a, "--trace-vectors")) trace_vectors = 1;
         else if (!strcmp(a, "--hist"))       hist = 1;
@@ -257,7 +258,7 @@ int main(int argc, char **argv)
 
     Arm6 *c = &m.cpu;
     printf("ROM %s, %u KB, CPU %s a %.0f MHz, %u MB di DRAM, %u KB di VRAM\n", cfg.rom_path, m.rom_size >> 10,
-           cfg.arm710 ? "ARM710" : "ARM610", m.mhz, m.ram_size >> 20, m.vram_size >> 10);
+           cfg.strongarm ? "SA-110" : cfg.arm710 ? "ARM710" : "ARM610", m.mhz, m.ram_size >> 20, m.vram_size >> 10);
     printf("%.0f ms emulati: %llu istruzioni, %llu frame\n", ms,
            (unsigned long long)c->instructions, (unsigned long long)m.frames);
     printf("PC %08X  modo %s  CPSR %08X  controllo %03X  TTB %08X  domini %08X\n",

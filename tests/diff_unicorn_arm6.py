@@ -153,8 +153,37 @@ def gen_swp(rng, cond, regs, priv):
     return cond << 28 | 0x01000090 | b << 22 | rn << 16 | rd << 12 | rm
 
 
+def gen_mull(rng, cond, regs, priv):
+    """UMULL/UMLAL/SMULL/SMLAL (ARMv4): RdHi, RdLo e Rm diversi"""
+    hi, lo, rm = rng.sample(range(15), 3)
+    u, a, s = rng.randrange(2), rng.randrange(2), rng.randrange(2)
+    return cond << 28 | 0x00800090 | u << 22 | a << 21 | s << 20 | hi << 16 | lo << 12 | rng.randrange(15) << 8 | rm
+
+
+def gen_halfword(rng, cond, regs, priv):
+    """LDRH/STRH/LDRSB/LDRSH (ARMv4); mezze parole allineate"""
+    sh = rng.choice([1, 2, 3])
+    l = 1 if sh != 1 else rng.randrange(2)
+    p, u, w = rng.randrange(2), rng.randrange(2), rng.randrange(2)
+    align = 1 if sh == 2 else 2
+    rn = rng.randrange(15)
+    regs[rn] = DATA + 0x800 + rng.randrange(-0x80, 0x80) * align
+    writeback = (not p) or w
+    rd = distinct(rng, {rn} if writeback else set())
+    i = cond << 28 | p << 24 | u << 23 | w << 21 | l << 20 | rn << 16 | rd << 12 | 0x90 | sh << 5
+    if rng.randrange(2):
+        off = rng.randrange(0x80) * align
+        return i | 1 << 22 | (off & 0xF0) << 4 | (off & 0xF)
+    rm = distinct(rng, {rn, rd})
+    regs[rm] = rng.randrange(0x80) * align
+    return i | rm
+
+
 GENERATORS = [(gen_dp, 35), (gen_mul, 8), (gen_mrs, 7), (gen_msr, 12),
               (gen_ldr_str, 20), (gen_ldm_stm, 13), (gen_swp, 5)]
+V4 = "--v4" in sys.argv
+if V4:
+    GENERATORS += [(gen_mull, 15), (gen_halfword, 20)]
 
 
 def make_case(rng):
@@ -211,8 +240,9 @@ def parse_oracle(line):
 
 
 def main():
-    count = int(sys.argv[1]) if len(sys.argv) > 1 else 50000
-    seed = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+    args = [a for a in sys.argv[1:] if a != "--v4"]
+    count = int(args[0]) if len(args) > 0 else 50000
+    seed = int(args[1]) if len(args) > 1 else 1
     if ORACLE is None:
         sys.exit("arm6_oracle non trovato: compilare prima (cmake --build build --config Release)")
     rng = random.Random(seed)
@@ -226,7 +256,7 @@ def main():
     addrs = [CODE + 4 * (k % (CODE_SIZE // 4 - 4)) for k in range(count)]
     stdin = "".join(f"{i:x} {a:x} {c:x} {s:x} " + " ".join(f"{r:x}" for r in regs) + "\n"
                     for (i, c, s, regs), a in zip(cases, addrs))
-    out = subprocess.run([str(ORACLE)], input=stdin, capture_output=True, text=True, check=True)
+    out = subprocess.run([str(ORACLE)] + (["--v4"] if V4 else []), input=stdin, capture_output=True, text=True, check=True)
     lines = out.stdout.splitlines()
     assert len(lines) == count, f"l'oracolo ha risposto {len(lines)} righe su {count}"
 

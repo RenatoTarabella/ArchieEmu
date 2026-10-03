@@ -549,7 +549,17 @@ static void sound_update(RiscPc *m, ArcTime now)
         if (!iomd_sound_next(&m->iomd, &addr)) { m->snd_next = now + sound_block(m); break; }
         const uint8_t *p = riscpc_phys(m, addr, 16);
         ArcTime t = m->snd_next;
-        for (int k = 0; k < 16; k++, t += period) {
+        if (m->vidc.sound_ctrl & 2) {
+            /* 16 bit (RISC OS 3.6/3.7 con "SoundSystem 16bit", controllo &03):
+               frame stereo lineari di 4 byte (prima il destro, poi il
+               sinistro: con *Stereo 1 -127 il suono e' tutto nel secondo),
+               stesso ritmo dei byte, quindi un frame dura 4 periodi */
+            for (int k = 0; k < 16 && m->audio; k += 4, t += 4 * period) {
+                double r = p ? (int16_t)(p[k] | p[k + 1] << 8) : 0;
+                double l = p ? (int16_t)(p[k + 2] | p[k + 3] << 8) : 0;
+                mix(m, t, t + 4 * period, l / OUT_GAIN, r / OUT_GAIN);
+            }
+        } else for (int k = 0; k < 16; k++, t += period) {
             if (!m->audio) continue;
             int ch = (int)((addr + (uint32_t)k) & 7);
             double v = p ? ulaw[p[k]] : 0, pl = left[m->vidc.stereo[ch] & 7] / 18.0;

@@ -160,7 +160,10 @@ codice copiato in questo progetto MIT.
      Documents/ArchieEmu/roms), il Risc PC con floppy, disco fisso e suono,
      "Choose Another Machine..."; il riconoscimento delle ROM e' comune
      (`romlist.c`).
-   Manca: il suono a 16 bit (RISC OS 3.6/3.7 con la scheda).
+   - suono a 16 bit: RISC OS 3.6/3.7 con `*Configure SoundSystem 16bit`
+     scrive &B1000003 (bit 1) e SFR = 10: frame stereo lineari di 4 byte
+     (prima il destro, poi il sinistro) allo stesso ritmo dei byte, cioe'
+     20,8 kHz; la stessa nota a 436 Hz, lo stereo verificato con *Stereo.
    HostFS anche sul Risc PC: la stessa scheda dell'Archimedes nello slot 0
    (&033C0000, un byte per parola), la SWI intercettata dal core ARMv3, la
    memoria logica attraverso la MMU (`arc_hostfs_init_mem`, `HostFsRegs`).

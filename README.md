@@ -1,12 +1,16 @@
-# ArchieEmu — a modular ARMv2 / Acorn Archimedes emulator
+# ArchieEmu — a modular Acorn Archimedes and Risc PC emulator
 
 An emulator written in C99, built from modules that only talk to each other
 through interfaces. It runs in two flavours:
 
-- **`archie.exe`** — a low-level Acorn Archimedes A3000/A310: the CPU executes the
-  real RISC OS 3.11 ROM and talks to emulated MEMC, IOC and VIDC chips, floppy
-  drives, keyboard, mouse and sound. Original software such as Zarch, Elite and
-  Pacmania runs on it.
+- **`archie.exe`** — low-level Acorn machines running the real RISC OS ROMs. A
+  startup dialog picks the machine:
+  - an **Archimedes** A3000/A310 (ARM2, MEMC, IOC, VIDC, floppy, sound) with
+    Arthur and RISC OS up to 3.11; original software such as Zarch, Elite and
+    Pacmania runs on it;
+  - a **Risc PC** (ARM610, ARM710 or StrongARM, IOMD, VIDC20, PS/2 keyboard,
+    PC-style floppy, IDE hard disc, 8 and 16-bit sound) with RISC OS 3.5, 3.6
+    and 3.7.
 - **`armwin.exe`** — a lightweight BBC BASIC V machine: the original BASIC module
   runs on the emulated ARM2, while the RISC OS calls it makes are handled in C,
   with a framebuffer that goes up to 32-bit truecolour.
@@ -28,9 +32,9 @@ through interfaces. It runs in two flavours:
 
 All releases: [Releases page](https://github.com/RenatoTarabella/ArchieEmu/releases).
 
-| RISC OS 3.11 desktop | Ray tracer in BBC BASIC + ARM assembler |
-|---|---|
-| ![RISC OS 3.11 desktop](docs/desktop.png) | ![Ray tracer, MODE 28, 256 colours](docs/raytracer-mode28.png) |
+| RISC OS 3.11 desktop | RISC OS 3.5 on the Risc PC | Ray tracer in BBC BASIC + ARM assembler |
+|---|---|---|
+| ![RISC OS 3.11 desktop](docs/desktop.png) | ![RISC OS 3.5 desktop with a hard disc and HostFS](docs/riscpc-desktop.png) | ![Ray tracer, MODE 28, 256 colours](docs/raytracer-mode28.png) |
 
 ```
  ┌────────────┐   ArmBus    ┌───────────┐   4 KB pages    ┌──────────────┐
@@ -176,8 +180,12 @@ the real RISC OS ROM and talks to the chips, just like the real machine.
 | Floppy | `src/archie/fdc.c` | WD1772 with ADFS `.adf` images, two drives |
 | Machine | `src/archie/archie.c` | A310 I/O map, 24 MHz time base, events |
 
-The ROMs go in `roms\` and are **not included**: RISC OS 3.1 is not open source.
-`archie.exe` looks for `roms\1. Major\ROM311`; the CMOS is saved next to the ROM
+The ROMs go in `roms\` and are **not included**: RISC OS 3.x is not open source.
+At startup `archie.exe` lists the ROMs it finds in `roms\` (any subfolder; on the
+Mac also `Documents/ArchieEmu/roms`) and asks which machine to start, with the
+processor, RAM and VRAM; the choice is remembered (`ArchieEmu.ini` next to the
+exe, the preferences on the Mac) and **Machine > Choose another machine...**
+brings the dialog back. `--rom file` skips it. The CMOS is saved next to the ROM
 (`ROM311.cmos`). The RISC OS 3 POST passes every test. To follow the boot:
 
 ```
@@ -261,14 +269,57 @@ programs also need a `!System` folder with newer modules (e.g. the Shared C
 Library): put one at the top of the HostFS folder and the Filer registers it
 when the window opens.
 
+## Risc PC machine (RISC OS 3.5-3.7)
+
+Choose **Acorn Risc PC** in the startup dialog (or `archie.exe --rom
+"roms\1. Major\ROM350"`). Supported ROMs: RISC OS 3.50, 3.60, 3.70 and 3.71;
+processors ARM610 (30 MHz, Risc PC 600), ARM710 (40 MHz) and StrongARM SA-110
+(202 MHz, RISC OS 3.7 only, as on the real machine).
+
+| Module | File | What it does |
+|---|---|---|
+| ARMv3/ARMv4 CPU | `src/cpu/arm6.c` | 26 and 32-bit modes, CPSR/SPSR, CP15 and MMU (sections, 64 KB and 4 KB pages, domains), StrongARM halfword and long multiply instructions |
+| IOMD | `src/riscpc/iomd.c` | interrupts, timers, sound and video DMA, PS/2 port, mouse counters |
+| VIDC20 | `src/riscpc/vidc20.c` | 1 to 32 bpp, 24-bit palette, timing from the frequency synthesiser, hardware cursor |
+| Keyboard | `src/riscpc/ps2kbd.c` | PS/2 keyboard (scan set 2) |
+| Super I/O | `src/riscpc/superio.c` | 82C711: configuration, floppy, IDE |
+| Floppy | `src/riscpc/fdc82077.c` | 82077 controller with DMA through FIQ; ADFS D/E/F, DOS 720 KB/1.44 MB, HFE |
+| Hard disc | `src/riscpc/ide.c` | IDE disc on `.hdf` images (raw 512-byte sectors) |
+| Formatter | `src/riscpc/hdformat.c` | new ADFS hard discs, byte for byte as HForm leaves them |
+| Machine | `src/riscpc/riscpc.c` | physical map, VRAM sizing, HostFS podule, events |
+
+What works: the POST and the desktop of every supported ROM, keyboard (the
+Windows/Mac layout is translated for the UK PC keyboard), mouse, CMOS
+(`*Configure` survives a restart), floppy read/write/format (also 1.6 MB high
+density), IDE hard discs, HostFS (the same folder as the Archimedes), 8-bit
+and 16-bit sound (`*Configure SoundSystem 16bit` on 3.6/3.7), 16 and 32 bpp
+modes. **Disc > New hard disc image** creates a ready-formatted disc of 64 to
+512 MB that appears as `HardDisc4` (`tools/mkhdf.py` does the same in Python);
+**Disc > Hard disc image** attaches an existing `.hdf`, and the choice is
+remembered.
+
+Good to know:
+- Without a boot disc the Apps folder is empty and only the numbered screen
+  modes (up to 256 colours) exist: both come from `!Boot` on disc (the monitor
+  definition files give the 16 and 32 bpp modes).
+- Archimedes games often do not run on a Risc PC, as on the real machine;
+  applications usually do.
+- Timing is not cycle-exact yet: caches and memory bandwidth are not modelled.
+
+`riscpc_boot` is the headless version used for development: it prints the
+state of the chips, lists accesses to unknown addresses, saves the screen and
+the sound, and types keys or moves the mouse (`--keys`). The ARMv3 core is
+checked against Unicorn in the 32-bit modes (`tests\diff_unicorn_arm6.py`,
+`--v4` for the StrongARM instructions). The design notes and everything learnt
+from the ROMs are in `docs/riscpc-plan.md`.
+
 ## Next steps
 
 1. Swappable ROMs for the BASIC machine (`--rom`): BASIC today, then Forth and
    other languages.
-2. Risc PC for RISC OS 3.5-3.7: ARMv3 CPU (ARM610/ARM710) with MMU, IOMD,
-   VIDC20, PC-style floppy and IDE hard disc images (plan in
-   `docs/riscpc-plan.md`).
-3. CD-ROM images; later StrongARM (ARMv4) and RISC OS 5.
+2. Risc PC: CD-ROM (ATAPI) images, networking and serial, cache and memory
+   timing; the RISC OS 3.8 development ROMs.
+3. RISC OS 4 and 5 on the StrongARM Risc PC.
 
 ## Licence
 

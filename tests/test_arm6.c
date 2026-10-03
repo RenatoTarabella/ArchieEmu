@@ -137,7 +137,7 @@ static T *setup(int mode)
 {
     static T t;
     memset(&t, 0, sizeof t);
-    ArmBus ab = { &t, b_r32, b_r8, b_w32, b_w8 };
+    ArmBus ab = { &t, b_r32, b_r8, b_w32, b_w8, NULL, NULL };
     arm6_init(&t.cpu, &ab, ARM6_ID_ARM610);
     t.cpu.swi_hook = hook;
     t.cpu.swi_user = &t;

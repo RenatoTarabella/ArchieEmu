@@ -39,6 +39,7 @@
 #include <string.h>
 #include "archie/archie.h"
 #include "riscpc/riscpc.h"
+#include "riscpc/hdformat.h"
 #include "archie_keys.h"
 #include "splash_win32.h"
 
@@ -369,7 +370,8 @@ static void choose_floppy(int drive)
 }
 
 /* Disco fisso del Risc PC: un'immagine esistente (new_mb = 0) o una nuova
-   vuota di new_mb MB; in tutti e due i casi la macchina riparte. */
+   di new_mb MB, gia' formattata ADFS come la lascia HForm (hdformat.c); in
+   tutti e due i casi la macchina riparte. */
 static void choose_hd(int new_mb)
 {
     capture_mouse(0);
@@ -396,7 +398,7 @@ static void choose_hd(int new_mb)
     keys_key(&keys, VK_CONTROL, 0, 0, 0, GetTickCount());
     keys_key(&keys, VK_MENU, 0, 0, 0, GetTickCount());
     if (!ok) return;
-    if (new_mb && !ide_create_image(path, (uint32_t)new_mb)) {
+    if (new_mb && !hdf_create(path, (uint32_t)new_mb, "HardDisc4", 0)) {
         MessageBoxA(app.hwnd, "Could not create the image.", "Risc PC", MB_ICONWARNING);
         return;
     }
@@ -406,9 +408,6 @@ static void choose_hd(int new_mb)
     }
     splash_set("hd_riscpc", path);
     riscpc_reset(&app.r);
-    if (new_mb)
-        MessageBoxA(app.hwnd, "The new disc is blank: format it with HForm (drive 4, make OTHER, "
-                    "accept the proposed shape, then \"I\" to initialise).", "Risc PC", MB_ICONINFORMATION);
 }
 
 /* barra dei menu, come sul Mac */

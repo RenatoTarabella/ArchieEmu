@@ -5,7 +5,7 @@
  * stata la CPU e salva lo schermo in PNG.
  *
  *   riscpc_boot --rom ROM350 [--ms 3000] [--png schermo.png] [--ram 16] [--vram 1]
- *               [--floppy a.adf] [--floppy2 b.adf] [--hd disco.hdf] [--create-hd disco.hdf MB]
+ *               [--floppy a.adf] [--floppy2 b.adf] [--hd disco.hdf] [--blank] [--create-hd disco.hdf MB]
  *               [--keys "testo{ENTER}"] [--keys-at ms]   (vedi riscpc_keys.h; da 10 s)
  *               [--arm710] [--trace-io] [--trace-vectors] [--hist] [--trace N] [--trace-at istr]
  *               [--trace-modes] [--watch-low] [--break pc] [--watch-io lo hi] [--ring N]   (le ultime N istruzioni prima del primo abort o undef)
@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "riscpc/riscpc.h"
+#include "riscpc/hdformat.h"
 #include "cpu/arm2_disasm.h"
 #include "frontend/png.h"
 #include "riscpc_keys.h"
@@ -167,6 +168,7 @@ int main(int argc, char **argv)
     uint32_t m_watch_lo = 0, m_watch_hi = 0;
     const char *floppy[2] = { NULL, NULL };
     const char *hd = NULL;
+    int blank = 0;
     const char *png = NULL;
     double ms = 3000, keys_at = 10000;
     cfg.rom_path = "roms/1. Major/ROM350";
@@ -187,10 +189,11 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--floppy") && v)  { floppy[0] = v; i++; }
         else if (!strcmp(a, "--floppy2") && v) { floppy[1] = v; i++; }
         else if (!strcmp(a, "--hd") && v)      { hd = v; i++; }
+        else if (!strcmp(a, "--blank"))        blank = 1;
         else if (!strcmp(a, "--create-hd") && v && i + 2 < argc) {
-            /* --create-hd file MB: un'immagine vuota, poi si esce */
+            /* --create-hd file MB: un disco formattato ADFS (con --blank prima: vuoto), poi si esce */
             uint32_t mb = (uint32_t)atoi(argv[i + 2]);
-            int ok = mb && ide_create_image(v, mb);
+            int ok = mb && (blank ? ide_create_image(v, mb) : hdf_create(v, mb, "HardDisc4", 0));
             printf("%s %s (%u MB)\n", ok ? "creata" : "impossibile creare", v, mb);
             return ok ? 0 : 1;
         }

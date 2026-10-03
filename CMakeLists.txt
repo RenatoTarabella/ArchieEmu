@@ -116,6 +116,7 @@ add_library(riscpccore STATIC
     src/riscpc/fdc82077.c
     src/riscpc/superio.c
     src/riscpc/ide.c
+    src/riscpc/hdformat.c
     src/riscpc/riscpc.c
 )
 target_include_directories(riscpccore PUBLIC src src/riscpc)
@@ -128,6 +129,9 @@ add_test(NAME fdc82077 COMMAND test_fdc82077)
 add_executable(test_ide tests/test_ide.c src/riscpc/ide.c)
 target_include_directories(test_ide PRIVATE src/riscpc)
 add_test(NAME ide COMMAND test_ide)
+add_executable(test_hdformat tests/test_hdformat.c src/riscpc/hdformat.c)
+target_include_directories(test_hdformat PRIVATE src/riscpc)
+add_test(NAME hdformat COMMAND test_hdformat)
 target_include_directories(test_iomd PRIVATE src/riscpc)
 add_test(NAME iomd COMMAND test_iomd)
 

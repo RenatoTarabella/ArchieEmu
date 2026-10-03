@@ -68,7 +68,10 @@ type long test lines. The tools for that:
   starts at 15 s of emulated time. Other options: `--ram --cmos --trace-vectors
   --hist --trace-abort --wav`. It prints the POST report.
 - Risc PC: `riscpc_boot [--rom "roms/1. Major/ROM350"] --ms 8000 --png out.png
-  [--vram 0|1|2] [--ram MB] [--arm710]`. It lists every access to an unknown
+  [--vram 0|1|2] [--ram MB] [--arm710] [--cmos file] [--keys "..." --keys-at ms]`.
+  Keys are PS/2 set 2 from a UK layout, typed from 10 s (the desktop is up at
+  ~8 s); extra tokens `{MOUSE dx,dy}` (y up, RISC OS scales by 1.5),
+  `{SELECT}` `{MENU}` `{ADJUST}`, `{ESC}` `{TAB}` and arrows. It lists every access to an unknown
   address; for debugging: `--trace-io`, `--watch-io lo hi`, `--trace-modes`,
   `--watch-low`, `--break pc`, `--ring N` (last instructions before the first
   abort), `--trace N --trace-at instr`, `--hist`. ROM350 reaches the desktop

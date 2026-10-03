@@ -16,7 +16,7 @@
  *   &1DC VIDINIT &1E0 VIDCR     &1F0 DMAST &1F4 DMARQ &1F8 DMAMSK
  * Bit dell'IRQ A come sull'IOC: 7 forzato, 6 timer 1, 5 timer 0,
  *   4 accensione, 3 flyback, 2 indice del floppy, 0 stampante.
- * IRQ B: 7 tastiera ricezione, 6 tastiera trasmissione, 5 schede,
+ * IRQ B: 7 tastiera: byte ricevuto, 6 tastiera: trasmettitore vuoto, 5 schede,
  *   4 floppy, 3 IDE, 2 seriale, 1 suono (vecchio), 0 FIQ delle schede.
  */
 #ifndef RISCPC_IOMD_H
@@ -39,6 +39,9 @@ typedef struct IomdHooks {
        ritorna i livelli letti sui pin (1 = alto) */
     void    (*lines_write)(void *ctx, uint8_t value);
     uint8_t (*lines_read)(void *ctx);
+    /* tastiera PS/2: byte arrivato alla tastiera; la tastiera ne ha uno? */
+    void    (*to_keyboard)(void *ctx, uint8_t byte);
+    int     (*from_keyboard)(void *ctx, uint8_t *byte);
 } IomdHooks;
 
 typedef struct Iomd {
@@ -48,7 +51,13 @@ typedef struct Iomd {
     IomdTimer timer[2];
     int       flyback;
 
+    /* tastiera: KBDCR bit 7 trasmettitore vuoto, 6 occupato, 5 byte
+       ricevuto, 3 abilitata, 2 parita' del byte ricevuto, 1-0 linee di
+       clock e dati */
     uint8_t   kbd_cr;
+    uint8_t   kbd_rx, kbd_tx;
+    int       kbd_rx_full, kbd_tx_busy;
+    ArcTime   kbd_tx_done, kbd_rx_next;
     uint32_t  romcr[2], dramcr, vrefcr, fsize, iotcr, ectcr, astcr;
     uint16_t  mouse_x, mouse_y;
 

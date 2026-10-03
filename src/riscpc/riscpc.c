@@ -165,6 +165,30 @@ static uint8_t lines_read(void *ctx)
 }
 
 /* ------------------------------------------------------------------ */
+/* tastiera e mouse                                                   */
+/* ------------------------------------------------------------------ */
+
+static void to_keyboard(void *ctx, uint8_t b)    { ps2kbd_rx(&((RiscPc *)ctx)->kbd, b); }
+static int  from_keyboard(void *ctx, uint8_t *b) { return ps2kbd_tx(&((RiscPc *)ctx)->kbd, b); }
+
+void riscpc_key(RiscPc *m, uint32_t code, int down)
+{
+    ps2kbd_key(&m->kbd, code, down);
+}
+
+/* contatori a quadratura dell'IOMD: RISC OS ne legge la differenza */
+void riscpc_mouse_move(RiscPc *m, int dx, int dy)
+{
+    m->iomd.mouse_x = (uint16_t)(m->iomd.mouse_x + dx);
+    m->iomd.mouse_y = (uint16_t)(m->iomd.mouse_y + dy);
+}
+
+void riscpc_mouse_buttons(RiscPc *m, int buttons)
+{
+    m->mouse_buttons = buttons & 7;
+}
+
+/* ------------------------------------------------------------------ */
 /* creazione                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -186,6 +210,7 @@ static uint8_t *load_file(const char *path, uint32_t *size)
 void riscpc_reset(RiscPc *m)
 {
     iomd_reset(&m->iomd, m->now);
+    ps2kbd_reset(&m->kbd);
     vidc20_reset(&m->vidc);
     arm6_reset(&m->cpu);
     m->frame_start = m->now;
@@ -218,7 +243,7 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
 
     ArmBus bus = { m, bus_r32, bus_r8, bus_w32, bus_w8 };
     arm6_init(&m->cpu, &bus, cfg->arm710 ? ARM6_ID_ARM710 : ARM6_ID_ARM610);
-    IomdHooks hooks = { m, lines_write, lines_read };
+    IomdHooks hooks = { m, lines_write, lines_read, to_keyboard, from_keyboard };
     iomd_init(&m->iomd, &hooks);
     if (cfg->cmos_path) snprintf(m->cmos_path, sizeof m->cmos_path, "%s", cfg->cmos_path);
     cmos_init(&m->cmos, cfg->cmos_path);
@@ -301,12 +326,50 @@ void riscpc_run(RiscPc *m, ArcTime duration)
     }
 }
 
+/* Lo schermo come lo legge il DMA video: da VIDINIT, e arrivato a VIDEND
+   si riparte da VIDSTART (RISC OS fa scorrere il testo cosi'). Si copia
+   in un buffer contiguo e il VIDC20 disegna da li'. */
+typedef struct ScreenCopy { const uint8_t *data; uint32_t size; } ScreenCopy;
+
 static const uint8_t *render_mem(void *ctx, uint32_t addr, uint32_t len)
 {
-    return riscpc_phys(ctx, addr, len);
+    const ScreenCopy *sc = ctx;
+    return addr + len <= sc->size ? sc->data + addr : NULL;
 }
 
 void riscpc_render(RiscPc *m, uint32_t *out, int stride, int *w, int *h)
 {
-    vidc20_render(&m->vidc, render_mem, m, m->iomd.vidinit, out, stride, w, h);
+    static uint8_t *copy;
+    static uint32_t copy_size;
+    int vw, vh;
+    vidc20_size(&m->vidc, &vw, &vh);
+    uint32_t bytes = (uint32_t)vw * (uint32_t)vh * (1u << vidc20_log2bpp(&m->vidc)) / 8;
+    if (bytes > copy_size) {
+        free(copy);
+        copy = malloc(bytes);
+        copy_size = copy ? bytes : 0;
+    }
+    ScreenCopy sc = { copy, 0 };
+    /* VIDEND e' l'inizio dell'ultimo trasferimento: dalla VRAM mezza riga
+       (&800 col bus a 64 bit, &400 a 32 bit: bit 3 e 2 di VIDCR), dalla
+       DRAM 16 byte. Cosi' VIDEND + trasferimento = area dello schermo. */
+    uint32_t xfer = (m->iomd.vidcr & 8) ? 0x800 : (m->iomd.vidcr & 4) ? 0x400 : 16;
+    uint32_t start = m->iomd.vidstart, end = m->iomd.vidend + xfer, addr = m->iomd.vidinit;
+    int wrap = end > start && addr >= start && addr < end;
+    while (copy && sc.size < bytes) {
+        uint32_t n = bytes - sc.size;
+        if (wrap && addr + n > end) n = end - addr;
+        /* a pezzi di al massimo 4 KB: la memoria fisica non e' per forza contigua */
+        uint32_t page = 0x1000 - (addr & 0xFFF);
+        if (n > page) n = page;
+        const uint8_t *p = riscpc_phys(m, addr, n);
+        if (p) memcpy(copy + sc.size, p, n);
+        else   memset(copy + sc.size, 0, n);
+        sc.size += n;
+        addr += n;
+        if (wrap && addr >= end) addr = start;
+    }
+    vidc20_render(&m->vidc, render_mem, &sc, 0, out, stride, w, h);
+    int ch = vidc20_cursor_height(&m->vidc);
+    if (ch) vidc20_draw_cursor(&m->vidc, riscpc_phys(m, m->iomd.cursinit, (uint32_t)ch * 8), out, stride, *w, *h);
 }

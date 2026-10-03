@@ -1,10 +1,11 @@
 /*
- * test_iomd.c - Test dell'IOMD del Risc PC: identita', interrupt, timer e
- * DMA del suono (il comportamento che il POST e il kernel di RISC OS 3.5
- * si aspettano).
+ * test_iomd.c - Test dell'IOMD del Risc PC: identita', interrupt, timer,
+ * DMA del suono e tastiera PS/2 (il comportamento che il POST e il kernel
+ * di RISC OS 3.5 si aspettano).
  */
 #include <stdio.h>
 #include "iomd.h"
+#include "ps2kbd.h"
 
 static int failures = 0, checks = 0;
 
@@ -75,11 +76,55 @@ static void test_sound_dma(void)
     CHECK_EQ(iomd_irq(&m), 0);                      /* fermo (stop): niente richiesta */
 }
 
+/* tastiera collegata all'IOMD: comandi, risposte e parita' */
+static Ps2Kbd kbd;
+static void to_kbd(void *ctx, uint8_t b) { (void)ctx; ps2kbd_rx(&kbd, b); }
+static int from_kbd(void *ctx, uint8_t *b) { (void)ctx; return ps2kbd_tx(&kbd, b); }
+
+static uint8_t kbd_read(ArcTime *t)
+{
+    for (int k = 0; k < 100 && !(rd(0x08, *t) & 0x20); k++) *t += ARC_US(500);
+    return (uint8_t)rd(0x04, *t);
+}
+
+static void test_keyboard(void)
+{
+    IomdHooks h = { NULL, NULL, NULL, to_kbd, from_kbd };
+    iomd_init(&m, &h);
+    ps2kbd_reset(&kbd);
+    ArcTime t = 0;
+    CHECK_EQ(rd(0x20, t) & 0xC0, 0);                /* spenta: niente interrupt */
+    wr(0x08, 0x08, t);
+    CHECK_EQ(rd(0x20, t) & 0xC0, 0x40);             /* trasmettitore vuoto */
+    wr(0x04, 0xFF, t);                              /* reset */
+    CHECK_EQ(rd(0x08, t) & 0xC0, 0x40);             /* occupato */
+    CHECK_EQ(kbd_read(&t), 0xFA);
+    uint8_t aa = kbd_read(&t);
+    CHECK_EQ(aa, 0xAA);
+    CHECK_EQ(rd(0x08, t) & 0x04, 0x04);             /* &AA: quattro 1, parita' dispari = 1 */
+    wr(0x04, 0xED, t);                              /* LED */
+    CHECK_EQ(kbd_read(&t), 0xFA);
+    wr(0x04, 0x02, t);
+    CHECK_EQ(kbd_read(&t), 0xFA);
+    CHECK_EQ(kbd.leds, 2);
+    ps2kbd_key(&kbd, ps2_code_from_vk('A', 0), 1);
+    ps2kbd_key(&kbd, ps2_code_from_vk('A', 0), 0);
+    ps2kbd_key(&kbd, ps2_code_from_vk(0x26, 1), 1);  /* freccia su */
+    CHECK_EQ(rd(0x20, t) & 0x80, 0);
+    CHECK_EQ(kbd_read(&t), 0x1C);
+    CHECK_EQ(kbd_read(&t), 0xF0);
+    CHECK_EQ(kbd_read(&t), 0x1C);
+    CHECK_EQ(kbd_read(&t), 0xE0);
+    CHECK_EQ(kbd_read(&t), 0x75);
+    CHECK_EQ(rd(0x08, t) & 0x04, 0);                /* &75: cinque 1 */
+}
+
 int main(void)
 {
     test_id_and_irq();
     test_timer();
     test_sound_dma();
+    test_keyboard();
     printf("%d controlli, %d falliti\n", checks, failures);
     return failures ? 1 : 0;
 }

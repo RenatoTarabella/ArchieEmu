@@ -9,6 +9,7 @@
 #include <string.h>
 
 #define TIMER_TICK 12u                     /* unita' da 24 MHz per tick a 2 MHz */
+#define KBD_BYTE   ARC_US(1000)            /* 11 bit a ~11 kHz */
 
 void iomd_init(Iomd *m, const IomdHooks *hooks)
 {
@@ -24,7 +25,7 @@ void iomd_reset(Iomd *m, ArcTime now)
     m->hooks = h;
     m->iocr = 0xFF;
     m->irqa = 0x80 | 0x10;                 /* forzato + accensione */
-    m->irqb = 0x40;                        /* trasmettitore della tastiera vuoto */
+    m->irqb = 0;
     m->fiq = 0x80;
     for (int i = 0; i < 2; i++) m->timer[i].start = now;
 }
@@ -38,8 +39,38 @@ static ArcTime timer_period(const IomdTimer *t)
     return (ArcTime)(t->latch ? t->latch : 0x10000) * TIMER_TICK;
 }
 
+/* tastiera: i bit 6 e 7 dell'IRQ B seguono lo stato del canale */
+static void kbd_lines(Iomd *m)
+{
+    int ena = (m->kbd_cr & 0x08) != 0;
+    m->irqb = (uint8_t)((m->irqb & 0x3F) | (ena && !m->kbd_tx_busy ? 0x40 : 0)
+                        | (ena && m->kbd_rx_full ? 0x80 : 0));
+}
+
+static void kbd_update(Iomd *m, ArcTime now)
+{
+    if (m->kbd_tx_busy && now >= m->kbd_tx_done) {
+        m->kbd_tx_busy = 0;
+        if (m->hooks.to_keyboard) m->hooks.to_keyboard(m->hooks.ctx, m->kbd_tx);
+        if (m->kbd_rx_next < now + ARC_US(200)) m->kbd_rx_next = now + ARC_US(200);
+    }
+    /* un byte dalla tastiera solo dopo che il computer ha letto il precedente */
+    if ((m->kbd_cr & 0x08) && !m->kbd_rx_full && now >= m->kbd_rx_next && m->hooks.from_keyboard) {
+        uint8_t b;
+        if (m->hooks.from_keyboard(m->hooks.ctx, &b)) {
+            m->kbd_rx = b;
+            m->kbd_rx_full = 1;
+            m->kbd_rx_next = now + KBD_BYTE;
+        } else {
+            m->kbd_rx_next = now + ARC_US(1000);
+        }
+    }
+    kbd_lines(m);
+}
+
 void iomd_update(Iomd *m, ArcTime now)
 {
+    kbd_update(m, now);
     for (int i = 0; i < 2; i++) {
         IomdTimer *t = &m->timer[i];
         if (!t->running) continue;
@@ -60,6 +91,8 @@ ArcTime iomd_next_event(const Iomd *m, ArcTime now)
         ArcTime e = t->start + timer_period(t);
         if (e < next) next = e;
     }
+    if (m->kbd_tx_busy && m->kbd_tx_done < next) next = m->kbd_tx_done;
+    if ((m->kbd_cr & 0x08) && !m->kbd_rx_full && m->kbd_rx_next < next) next = m->kbd_rx_next;
     return next > now ? next : now + 1;
 }
 
@@ -132,8 +165,18 @@ uint32_t iomd_read(Iomd *m, uint32_t off, ArcTime now, int *known)
         uint8_t in = m->hooks.lines_read ? m->hooks.lines_read(m->hooks.ctx) : 0x3F;
         return (uint32_t)((m->iocr & in & 0x3F) | (m->flyback ? 0x80 : 0));
     }
-    case 0x004: m->irqb &= (uint8_t)~0x80; return 0;
-    case 0x008: return m->kbd_cr | 0x80u;          /* trasmettitore vuoto */
+    case 0x004:
+        m->kbd_rx_full = 0;
+        kbd_lines(m);
+        return m->kbd_rx;
+    case 0x008:
+    {
+        /* bit 2: il bit di parita' (dispari) arrivato col byte */
+        uint32_t ones = 0;
+        for (uint8_t x = m->kbd_rx; x; x &= (uint8_t)(x - 1)) ones++;
+        return (uint32_t)(m->kbd_cr | (m->kbd_tx_busy ? 0x40 : 0x80) | (m->kbd_rx_full ? 0x20 : 0)
+                          | (ones & 1 ? 0 : 0x04) | 0x03);
+    }
     case 0x010: return m->irqa;
     case 0x014: return m->irqa & m->irqa_mask;
     case 0x018: return m->irqa_mask;
@@ -192,8 +235,19 @@ void iomd_write(Iomd *m, uint32_t off, uint32_t v, ArcTime now, int *known)
         m->iocr = b;
         if (m->hooks.lines_write) m->hooks.lines_write(m->hooks.ctx, b);
         break;
-    case 0x004: break;                             /* byte verso la tastiera */
-    case 0x008: m->kbd_cr = b & 0x08; break;
+    case 0x004:                                    /* byte verso la tastiera */
+        if (m->kbd_cr & 0x08) {
+            m->kbd_tx = b;
+            m->kbd_tx_busy = 1;
+            m->kbd_tx_done = now + KBD_BYTE;
+        }
+        kbd_lines(m);
+        break;
+    case 0x008:
+        m->kbd_cr = b & 0x08;
+        if (!(b & 0x08)) { m->kbd_tx_busy = 0; m->kbd_rx_full = 0; }
+        kbd_lines(m);
+        break;
     case 0x014: m->irqa &= (uint8_t)~(b & 0x7C); break;
     case 0x018: m->irqa_mask = b; break;
     case 0x028: m->irqb_mask = b; break;

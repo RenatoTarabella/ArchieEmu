@@ -94,8 +94,20 @@ codice copiato in questo progetto MIT.
    `--trace-modes`, `--watch-low`, `--break pc`, `--ring N`, `--hist`.
    Ancora da fare qui: tempi del frame dal VIDC20 (ora 50 Hz fissi),
    cursore hardware, il Super I/O (RISC OS lo configura a &03010FC0).
-3. **Tastiera, mouse, CMOS**: PS/2 tramite l'IOMD, mouse a quadratura,
-   PCF8583 sulle linee I2C. Obiettivo: il desktop di RISC OS 3.5.
+3. **Tastiera, mouse, CMOS** (fatto, da riga di comando): tastiera PS/2
+   (`ps2kbd.c`, set 2, risponde a reset, LED, ripetizione) sul canale
+   dell'IOMD (KBDDAT/KBDCR, IRQB bit 6/7; il driver controlla la parita'
+   nel bit 2 di KBDCR e senza chiede di rispedire); mouse a quadratura
+   (MOUSEX/MOUSEY, RISC OS ne legge la differenza; passo x1,5) e tasti a
+   &03310000; cursore hardware del VIDC20 (HCSR = x + HDSR - 20); la CMOS
+   PCF8583 riusata dall'Archimedes, `*Configure` resta dopo il riavvio.
+   Lo schermo si disegna come lo legge il DMA: da VIDINIT, e a fine area
+   si torna a VIDSTART; la fine e' VIDEND + l'ultimo trasferimento (&800
+   o &400 dalla VRAM secondo VIDCR, 16 byte dalla DRAM), cosi' il testo
+   che scorre esce giusto. `riscpc_boot --keys` scrive e muove il mouse
+   (`{MOUSE dx,dy}`, `{SELECT}`, `{MENU}`, `{ADJUST}`). Senza disco di boot
+   la cartella Apps resta vuota ("Resources:$.Apps not found", la
+   riempiono gli `*AddApp` del boot).
 4. **Floppy**: 82C711/82077 con il suo DMA o FIQ; le immagini ADF esistenti.
 5. **IDE**: immagini di hard disc (`.hdf`), ADFS su IDE, formattazione con
    HForm.

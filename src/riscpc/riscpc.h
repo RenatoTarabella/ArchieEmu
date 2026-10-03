@@ -24,6 +24,7 @@
 #include "../archie/cmos.h"
 #include "iomd.h"
 #include "vidc20.h"
+#include "ps2kbd.h"
 
 typedef struct RiscPcConfig {
     const char *rom_path;
@@ -42,6 +43,7 @@ typedef struct RiscPc {
     Iomd     iomd;
     Vidc20   vidc;
     Cmos     cmos;
+    Ps2Kbd   kbd;
 
     uint8_t *rom, *ram, *vram;
     uint32_t rom_size, ram_size, vram_size;
@@ -78,5 +80,11 @@ ArcTime riscpc_now(const RiscPc *m);
 const uint8_t *riscpc_phys(RiscPc *m, uint32_t addr, uint32_t len);
 
 void riscpc_render(RiscPc *m, uint32_t *out, int stride, int *w, int *h);
+
+/* Tastiera: codice del set 2 (vedi ps2kbd.h), premuto o rilasciato */
+void riscpc_key(RiscPc *m, uint32_t code, int down);
+/* Mouse: movimento (y verso l'alto) e tasti premuti (bit 0 Adjust, 1 Menu, 2 Select) */
+void riscpc_mouse_move(RiscPc *m, int dx, int dy);
+void riscpc_mouse_buttons(RiscPc *m, int buttons);
 
 #endif

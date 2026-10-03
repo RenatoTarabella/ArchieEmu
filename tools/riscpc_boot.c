@@ -5,6 +5,7 @@
  * stata la CPU e salva lo schermo in PNG.
  *
  *   riscpc_boot --rom ROM350 [--ms 3000] [--png schermo.png] [--ram 16] [--vram 1]
+ *               [--keys "testo{ENTER}"] [--keys-at ms]   (vedi riscpc_keys.h; da 10 s)
  *               [--arm710] [--trace-io] [--trace-vectors] [--hist] [--trace N] [--trace-at istr]
  *               [--trace-modes] [--watch-low] [--break pc] [--watch-io lo hi] [--ring N]   (le ultime N istruzioni prima del primo abort o undef)
  */
@@ -14,6 +15,7 @@
 #include "riscpc/riscpc.h"
 #include "cpu/arm2_disasm.h"
 #include "frontend/png.h"
+#include "riscpc_keys.h"
 
 /* --- accessi sconosciuti: uno per indirizzo e direzione --- */
 typedef struct IoEntry {
@@ -163,7 +165,7 @@ int main(int argc, char **argv)
     RiscPcConfig cfg = { 0 };
     uint32_t m_watch_lo = 0, m_watch_hi = 0;
     const char *png = NULL;
-    double ms = 3000;
+    double ms = 3000, keys_at = 10000;
     cfg.rom_path = "roms/1. Major/ROM350";
     cfg.vram_mb = 1;
     for (int i = 1; i < argc; i++) {
@@ -179,6 +181,8 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--trace-at") && v) { trace_at = strtoull(v, NULL, 10); i++; }
         else if (!strcmp(a, "--ring") && v) { ring_size = (uint32_t)atoi(v); if (ring_size > 4096) ring_size = 4096; i++; }
         else if (!strcmp(a, "--trace-modes")) trace_modes = 1;
+        else if (!strcmp(a, "--keys") && v)  { parse_keys(v); i++; }
+        else if (!strcmp(a, "--keys-at") && v) { keys_at = atof(v); i++; }
         else if (!strcmp(a, "--watch-low")) watch_low = 1;
         else if (!strcmp(a, "--watch-io") && i + 2 < argc) {
             m_watch_lo = (uint32_t)strtoul(argv[i + 1], NULL, 16);
@@ -202,7 +206,8 @@ int main(int argc, char **argv)
     m.cpu.exception_hook = exc_hook;
     if (hist || trace_left || ring_size || trace_modes || watch_low || break_count) m.cpu.trace_hook = trace_hook;
 
-    riscpc_run(&m, (ArcTime)(ms * 24000.0));
+    if (key_count) run_with_keys(&m, (ArcTime)(ms * 24000.0), (ArcTime)(keys_at * 24000.0));
+    else           riscpc_run(&m, (ArcTime)(ms * 24000.0));
 
     Arm6 *c = &m.cpu;
     printf("ROM %s, %u KB, CPU %s a %.0f MHz, %u MB di DRAM, %u KB di VRAM\n", cfg.rom_path, m.rom_size >> 10,
@@ -221,7 +226,9 @@ int main(int argc, char **argv)
            m.iomd.dma_irq, m.iomd.dma_mask, m.iomd.timer[0].latch, m.iomd.vidinit, m.iomd.vidstart, m.iomd.vidend, m.iomd.vidcr);
     int w, h;
     vidc20_size(&m.vidc, &w, &h);
-    printf("VIDC20: %dx%d, %d bpp, controllo %06X\n", w, h, 1 << vidc20_log2bpp(&m.vidc), m.vidc.control);
+    printf("VIDC20: %dx%d, %d bpp, controllo %06X  HDSR %u VDSR %u  cursore HCSR %u VCSR %u VCER %u CURSINIT %08X\n",
+           w, h, 1 << vidc20_log2bpp(&m.vidc), m.vidc.control, m.vidc.horiz[3], m.vidc.vert[3],
+           m.vidc.horiz[6], m.vidc.vert[6], m.vidc.vert[7], m.iomd.cursinit);
 
     if (io_count) {
         printf("accessi sconosciuti (%d indirizzi):\n", io_count);

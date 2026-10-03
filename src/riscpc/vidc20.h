@@ -43,4 +43,10 @@ typedef const uint8_t *(*Vidc20Mem)(void *ctx, uint32_t addr, uint32_t len);
 void vidc20_render(const Vidc20 *v, Vidc20Mem mem, void *ctx, uint32_t start,
                    uint32_t *out, int stride, int *w, int *h);
 
+/* Cursore hardware: 32 pixel a 2 bpp, 8 byte per riga da 'data' (CURSINIT
+   dell'IOMD); 0 trasparente, 1-3 i colori del cursore. Va disegnato sopra
+   l'immagine prodotta da vidc20_render. */
+int  vidc20_cursor_height(const Vidc20 *v);
+void vidc20_draw_cursor(const Vidc20 *v, const uint8_t *data, uint32_t *out, int stride, int w, int h);
+
 #endif

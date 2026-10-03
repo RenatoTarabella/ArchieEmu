@@ -112,13 +112,14 @@ target_link_libraries(romdis armcore)
 add_library(riscpccore STATIC
     src/riscpc/iomd.c
     src/riscpc/vidc20.c
+    src/riscpc/ps2kbd.c
     src/riscpc/riscpc.c
     src/archie/cmos.c
 )
 target_include_directories(riscpccore PUBLIC src src/riscpc)
 target_link_libraries(riscpccore armcore)
 
-add_executable(test_iomd tests/test_iomd.c src/riscpc/iomd.c)
+add_executable(test_iomd tests/test_iomd.c src/riscpc/iomd.c src/riscpc/ps2kbd.c)
 target_include_directories(test_iomd PRIVATE src/riscpc)
 add_test(NAME iomd COMMAND test_iomd)
 

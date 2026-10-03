@@ -83,3 +83,33 @@ void vidc20_render(const Vidc20 *v, Vidc20Mem mem, void *ctx, uint32_t start,
         }
     }
 }
+
+/* Posizione del cursore rispetto all'inizio del display: VCSR conta da
+   VDSR; in orizzontale RISC OS scrive HCSR = x + HDSR - 20 (lo stesso a
+   1, 4 e 8 bpp: col puntatore contro il bordo sinistro HCSR = HDSR - 20). */
+#define CURSOR_X_DELAY 20
+int vidc20_cursor_height(const Vidc20 *v)
+{
+    int hgt = (int)v->vert[7] - (int)v->vert[6];
+    return hgt > 0 && hgt <= 256 ? hgt : 0;
+}
+
+void vidc20_draw_cursor(const Vidc20 *v, const uint8_t *data, uint32_t *out, int stride, int w, int h)
+{
+    int hgt = vidc20_cursor_height(v);
+    if (!data || !hgt) return;
+    int x0 = (int)v->horiz[6] - (int)v->horiz[3] + CURSOR_X_DELAY;
+    int y0 = (int)v->vert[6] - (int)v->vert[3];
+    for (int y = 0; y < hgt; y++) {
+        int sy = y0 + y;
+        if (sy < 0 || sy >= h) continue;
+        for (int x = 0; x < 32; x++) {
+            int sx = x0 + x;
+            if (sx < 0 || sx >= w) continue;
+            int c = (data[y * 8 + x / 4] >> ((x & 3) * 2)) & 3;
+            if (!c) continue;
+            uint32_t col = v->cursor[c - 1];
+            out[(size_t)sy * (size_t)stride + (size_t)sx] = (col & 0xFF) << 16 | (col & 0xFF00) | ((col >> 16) & 0xFF);
+        }
+    }
+}

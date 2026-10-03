@@ -32,7 +32,7 @@ Windows: MSVC 2022 through CMake (no gcc). macOS: see below.
 
 ```
 cmake --build build --config Release
-build\Release\test_arm2.exe   (also test_arm6, test_iomd, test_fdc82077, test_basic, test_memc, test_vidc, test_kbd, test_cmos, test_fdc, test_keys_es ROM)
+build\Release\test_arm2.exe   (also test_arm6, test_iomd, test_fdc82077, test_ide, test_basic, test_memc, test_vidc, test_kbd, test_cmos, test_fdc, test_keys_es ROM)
 .venv\Scripts\python tests\diff_unicorn.py        # ARM2 ALU oracle against Unicorn
 .venv\Scripts\python tests\diff_unicorn_arm6.py   # ARMv3 core, 32-bit modes, against Unicorn (SA1100)
 ```
@@ -71,6 +71,7 @@ type long test lines. The tools for that:
   --hist --trace-abort --wav`. It prints the POST report.
 - Risc PC: `riscpc_boot [--rom "roms/1. Major/ROM350"] --ms 8000 --png out.png
   [--vram 0|1|2] [--ram MB] [--arm710] [--cmos file] [--floppy a.adf --floppy2 b.adf]
+  [--hd disc.hdf] (`--create-hd disc.hdf MB` makes a blank image and exits)
   [--keys "..." --keys-at ms]`.
   Keys are PS/2 set 2 from a UK layout, typed from 10 s (the desktop is up at
   ~8 s); extra tokens `{MOUSE dx,dy}` (y up, RISC OS scales by 1.5),

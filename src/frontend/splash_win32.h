@@ -31,4 +31,8 @@ void splash_rom_name(int version, char *out, size_t size);
 /* Mostra la finestra; ritorna 0 se l'utente rinuncia. */
 int  splash_choose(HINSTANCE inst, MachineChoice *choice);
 
+/* impostazioni in ArchieEmu.ini, sezione [Machine] */
+void splash_get(const char *key, char *out, unsigned size);
+void splash_set(const char *key, const char *value);
+
 #endif

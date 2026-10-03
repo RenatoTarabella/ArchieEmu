@@ -368,9 +368,55 @@ static void choose_floppy(int drive)
     if (slash) *slash = 0;
 }
 
+/* Disco fisso del Risc PC: un'immagine esistente (new_mb = 0) o una nuova
+   vuota di new_mb MB; in tutti e due i casi la macchina riparte. */
+static void choose_hd(int new_mb)
+{
+    capture_mouse(0);
+    char path[MAX_PATH] = "";
+    OPENFILENAMEA ofn;
+    memset(&ofn, 0, sizeof ofn);
+    ofn.lStructSize = sizeof ofn;
+    ofn.hwndOwner = app.hwnd;
+    ofn.lpstrFilter = "Hard disc images (*.hdf)\0*.hdf\0All files\0*.*\0";
+    ofn.lpstrFile = path;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrDefExt = "hdf";
+    int ok;
+    if (new_mb) {
+        ofn.lpstrTitle = "New hard disc image";
+        ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+        ok = GetSaveFileNameA(&ofn);
+    } else {
+        ofn.lpstrTitle = "Hard disc image for drive :4";
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+        ok = GetOpenFileNameA(&ofn);
+    }
+    keys_key(&keys, VK_SHIFT, 0, 0, 0, GetTickCount());
+    keys_key(&keys, VK_CONTROL, 0, 0, 0, GetTickCount());
+    keys_key(&keys, VK_MENU, 0, 0, 0, GetTickCount());
+    if (!ok) return;
+    if (new_mb && !ide_create_image(path, (uint32_t)new_mb)) {
+        MessageBoxA(app.hwnd, "Could not create the image.", "Risc PC", MB_ICONWARNING);
+        return;
+    }
+    if (!riscpc_attach_hd(&app.r, path)) {
+        MessageBoxA(app.hwnd, "Not a hard disc image.", "Risc PC", MB_ICONWARNING);
+        return;
+    }
+    splash_set("hd_riscpc", path);
+    riscpc_reset(&app.r);
+    if (new_mb)
+        MessageBoxA(app.hwnd, "The new disc is blank: format it with HForm (drive 4, make OTHER, "
+                    "accept the proposed shape, then \"I\" to initialise).", "Risc PC", MB_ICONINFORMATION);
+}
+
 /* barra dei menu, come sul Mac */
 enum { CMD_INSERT0 = 100, CMD_INSERT1, CMD_EJECT0, CMD_EJECT1, CMD_TURBO, CMD_SOUND, CMD_RESET, CMD_RIGHT_MENU, CMD_QUIT,
-       CMD_RAM1, CMD_RAM2, CMD_RAM4, CMD_NEW };
+       CMD_RAM1, CMD_RAM2, CMD_RAM4, CMD_NEW, CMD_HD_OPEN, CMD_HD_REMOVE,
+       CMD_HD_NEW = 150 };                         /* + indice della dimensione */
+
+static const int hd_sizes[] = { 64, 128, 256, 512 };   /* MB */
 
 static HMENU build_menu(void)
 {
@@ -380,6 +426,18 @@ static HMENU build_menu(void)
     AppendMenuA(disc, MF_SEPARATOR, 0, NULL);
     AppendMenuA(disc, MF_STRING, CMD_EJECT0, "Eject :0");
     AppendMenuA(disc, MF_STRING, CMD_EJECT1, "Eject :1");
+    if (app.rpc) {
+        HMENU sizes = CreatePopupMenu();
+        for (int k = 0; k < 4; k++) {
+            char t[32];
+            snprintf(t, sizeof t, "%d MB...", hd_sizes[k]);
+            AppendMenuA(sizes, MF_STRING, CMD_HD_NEW + k, t);
+        }
+        AppendMenuA(disc, MF_SEPARATOR, 0, NULL);
+        AppendMenuA(disc, MF_STRING, CMD_HD_OPEN, "Hard disc image (:4)...");
+        AppendMenuA(disc, MF_POPUP, (UINT_PTR)sizes, "New hard disc image");
+        AppendMenuA(disc, MF_STRING, CMD_HD_REMOVE, "Remove hard disc");
+    }
     AppendMenuA(mach, MF_STRING, CMD_TURBO, "Turbo");
     if (!app.rpc) {                                 /* il Risc PC non ha ancora il suono */
         AppendMenuA(mach, MF_STRING, CMD_SOUND, "Sound");
@@ -405,6 +463,15 @@ static void menu_command(int id)
     switch (id) {
     case CMD_INSERT0: choose_floppy(0); break;
     case CMD_INSERT1: choose_floppy(1); break;
+    case CMD_HD_OPEN:   choose_hd(0); break;
+    case CMD_HD_REMOVE:
+        if (MessageBoxA(app.hwnd, "Removing the hard disc restarts the machine. Continue?", "Risc PC",
+                        MB_OKCANCEL | MB_ICONQUESTION) == IDOK) {
+            riscpc_detach_hd(&app.r);
+            splash_set("hd_riscpc", "");
+            riscpc_reset(&app.r);
+        }
+        break;
     case CMD_EJECT0: case CMD_EJECT1: {
         int d = id == CMD_EJECT1;
         fdc_eject(floppies(), d);
@@ -447,7 +514,9 @@ static void menu_command(int id)
     }
     case CMD_RIGHT_MENU: app.right_menu = !app.right_menu; break;
     case CMD_QUIT: DestroyWindow(app.hwnd); break;
-    default: break;
+    default:
+        if (id >= CMD_HD_NEW && id < CMD_HD_NEW + 4) choose_hd(hd_sizes[id - CMD_HD_NEW]);
+        break;
     }
 }
 
@@ -467,7 +536,10 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         CheckMenuItem(m, CMD_RAM4, app.a.ram_size == 4u << 20 ? MF_CHECKED : MF_UNCHECKED);
         EnableMenuItem(m, CMD_EJECT0, floppies()->drive[0].image ? MF_ENABLED : MF_GRAYED);
         EnableMenuItem(m, CMD_EJECT1, floppies()->drive[1].image ? MF_ENABLED : MF_GRAYED);
-        if (app.rpc) return 0;
+        if (app.rpc) {
+            EnableMenuItem(m, CMD_HD_REMOVE, app.r.sio.ide.fp ? MF_ENABLED : MF_GRAYED);
+            return 0;
+        }
         return 0;
     }
     case WM_KEYDOWN:
@@ -677,6 +749,9 @@ int main(int argc, char **argv)
             return 1;
         }
         keys_init_ps2(&keys, rpc_key, &app.r);
+        char hd[MAX_PATH];
+        splash_get("hd_riscpc", hd, sizeof hd);
+        if (hd[0]) riscpc_attach_hd(&app.r, hd);
         for (int d = 0; d < 2; d++) {
             if (!cfg.floppy[d]) continue;
             if (riscpc_insert_floppy(&app.r, d, cfg.floppy[d]))

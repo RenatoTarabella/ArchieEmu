@@ -92,6 +92,9 @@ void riscpc_set_mhz(RiscPc *m, double mhz);
 /* Floppy: immagine nell'unita' 0 o 1 (0 = errore), espulsione (salva) */
 int  riscpc_insert_floppy(RiscPc *m, int drive, const char *path);
 void riscpc_eject_floppy(RiscPc *m, int drive);
+/* Disco fisso IDE: immagine .hdf (0 = errore) */
+int  riscpc_attach_hd(RiscPc *m, const char *path);
+void riscpc_detach_hd(RiscPc *m);
 
 /* Tastiera: codice del set 2 (vedi ps2kbd.h), premuto o rilasciato */
 void riscpc_key(RiscPc *m, uint32_t code, int down);

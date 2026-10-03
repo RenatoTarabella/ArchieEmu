@@ -133,6 +133,18 @@ static void ini_init(void)
     else       strcpy(ini_path, "ArchieEmu.ini");
 }
 
+void splash_get(const char *key, char *out, unsigned size)
+{
+    ini_init();
+    GetPrivateProfileStringA("Machine", key, "", out, size, ini_path);
+}
+
+void splash_set(const char *key, const char *value)
+{
+    ini_init();
+    WritePrivateProfileStringA("Machine", key, value, ini_path);
+}
+
 static int ini_int(const char *key, int def)
 {
     return (int)GetPrivateProfileIntA("Machine", key, def, ini_path);

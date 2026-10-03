@@ -8,6 +8,7 @@ void superio_init(SuperIo *s)
 {
     memset(s, 0, sizeof *s);
     fdc82077_init(&s->fdc);
+    ide_init(&s->ide);
 }
 
 void superio_reset(SuperIo *s, ArcTime now)
@@ -15,6 +16,8 @@ void superio_reset(SuperIo *s, ArcTime now)
     s->config_mode = s->config_keys = 0;
     s->fdc.dor = 0;
     fdc82077_reset(&s->fdc, now);
+    s->ide.control = 0;
+    ide_reset(&s->ide);
 }
 
 uint8_t superio_read(SuperIo *s, uint32_t port, ArcTime now, int *known)
@@ -25,6 +28,10 @@ uint8_t superio_read(SuperIo *s, uint32_t port, ArcTime now, int *known)
     case 0x3F2: case 0x3F4: case 0x3F5: case 0x3F7:
         return fdc82077_read(&s->fdc, (int)(port & 7), now);
     case 0x391: return s->c710[s->c710_index & 15];
+    case 0x1F0: case 0x1F1: case 0x1F2: case 0x1F3:
+    case 0x1F4: case 0x1F5: case 0x1F6: case 0x1F7:
+        return ide_read(&s->ide, (int)(port & 7));
+    case 0x3F6: return ide_read(&s->ide, 8);
     case 0x3FF: return s->scratch[0];
     case 0x2FF: return s->scratch[1];
     case 0x3FD: return 0x60;                     /* seriale: trasmettitore vuoto */
@@ -53,10 +60,27 @@ void superio_write(SuperIo *s, uint32_t port, uint8_t v, ArcTime now, int *known
         fdc82077_write(&s->fdc, (int)(port & 7), v, now);
         break;
     case 0x2FA: case 0x3FA: break;               /* sequenza d'accesso dell'82C710 */
+    case 0x1F0: case 0x1F1: case 0x1F2: case 0x1F3:
+    case 0x1F4: case 0x1F5: case 0x1F6: case 0x1F7:
+        ide_write(&s->ide, (int)(port & 7), v);
+        break;
+    case 0x3F6: ide_write(&s->ide, 8, v); break;
     case 0x390: s->c710_index = v; break;
     case 0x391: s->c710[s->c710_index & 15] = v; break;
     case 0x3FF: s->scratch[0] = v; break;
     case 0x2FF: s->scratch[1] = v; break;
     default: *known = 0; break;
     }
+}
+
+uint16_t superio_read16(SuperIo *s, uint32_t port, ArcTime now, int *known)
+{
+    if (port == 0x1F0) { *known = 1; return ide_read_data(&s->ide); }
+    return superio_read(s, port, now, known);
+}
+
+void superio_write16(SuperIo *s, uint32_t port, uint16_t v, ArcTime now, int *known)
+{
+    if (port == 0x1F0) { *known = 1; ide_write_data(&s->ide, v); return; }
+    superio_write(s, port, (uint8_t)v, now, known);
 }

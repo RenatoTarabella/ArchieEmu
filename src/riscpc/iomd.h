@@ -17,7 +17,7 @@
  * Bit dell'IRQ A come sull'IOC: 7 forzato, 6 timer 1, 5 timer 0,
  *   4 accensione, 3 flyback, 2 indice del floppy, 0 stampante.
  * IRQ B: 7 tastiera: byte ricevuto, 6 tastiera: trasmettitore vuoto, 5 schede,
- *   4 floppy, 3 IDE, 2 seriale, 1 suono (vecchio), 0 FIQ delle schede.
+ *   4 floppy, 2 seriale, 1 IDE (abilitato da ADFS), 0 FIQ delle schede.
  */
 #ifndef RISCPC_IOMD_H
 #define RISCPC_IOMD_H

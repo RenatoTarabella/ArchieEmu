@@ -124,8 +124,20 @@ codice copiato in questo progetto MIT.
    `*Format :0 F` su un'immagine vuota da 1,6 MB; riconosciute anche le
    immagini DOS da 720 KB e 1,44 MB. Nella finestra: menu Disc e
    trascinamento dei file anche per il Risc PC.
-5. **IDE**: immagini di hard disc (`.hdf`), ADFS su IDE, formattazione con
-   HForm.
+5. **IDE** (in corso): disco ATA in PIO (`ide.c`) alle porte &1F0-&1F7 e
+   &3F6 del Super I/O, dato a 16 bit con gli accessi a parola, interrupt
+   sull'IRQ B bit 1 (quello che abilita ADFS); immagini `.hdf` grezze
+   (settori da 512 byte, nessuna intestazione), geometria proposta 16
+   testine e 63 settori. ADFS cerca il disco solo con `IDEDiscs` >= 1 nella
+   CMOS (byte fisico &C7, bit 6-7): `riscpc_attach_hd` lo imposta da solo.
+   HForm 2.23 (1994, dall'archivio, su dischetto con `mkadfs.py`) formatta
+   un disco vuoto: unita' 4, "OTHER", valori proposti, A, "I" (inizializza:
+   il FORMAT TRACK dell'ATA non c'e'), soak test N, Y, unita' 512. Ne
+   esce un disco "new map" (idlen 14, 512 byte per bit, 51 zone per
+   100 MB, mappa e radice a meta' disco) che ADFS legge e scrive. Nella
+   finestra: Disc > Hard disc image, New hard disc image, Remove.
+   Da fare: un formattatore nostro (le immagini nuove ora vanno formattate
+   con HForm), confrontato byte per byte con quello di HForm.
 6. **VIDC20 completo e suono**: modi alti a 16/32 bpp, cursore hardware,
    suono; poi l'integrazione nel frontend Mac. Su Windows la finestra c'e'
    gia' (anticipata dopo il passo 3): `archie.exe` apre una finestra

@@ -38,6 +38,7 @@ static void update_lines(RiscPc *m)
 {
     /* floppy: interrupt sull'IRQ B bit 4, richiesta di dato sul FIQ bit 0 */
     iomd_set_irqb_line(&m->iomd, 0x10, fdc82077_irq(&m->sio.fdc));
+    iomd_set_irqb_line(&m->iomd, 0x02, ide_irq(&m->sio.ide));     /* IDE: IRQ B bit 1 (lo abilita ADFS) */
     if (fdc82077_drq(&m->sio.fdc)) m->iomd.fiq |= 0x01; else m->iomd.fiq &= (uint8_t)~0x01;
     m->cpu.irq_line = iomd_irq(&m->iomd);
     m->cpu.fiq_line = iomd_fiq(&m->iomd);
@@ -105,7 +106,9 @@ static uint32_t io_read(RiscPc *m, uint32_t a, int size)
         if (a & 0x1FF000u) known = 0;
         update_lines(m);
     } else if ((a & 0xFFFFF000u) == 0x03010000u) {
-        v = superio_read(&m->sio, (a & 0xFFF) >> 2, now, &known);
+        /* a parola: il registro dati dell'IDE a 16 bit */
+        v = size == 4 ? superio_read16(&m->sio, (a & 0xFFF) >> 2, now, &known)
+                      : superio_read(&m->sio, (a & 0xFFF) >> 2, now, &known);
         update_lines(m);
         reschedule(m, now);
     } else if ((a & 0xFFFFF000u) == 0x03012000u || (a & 0xFFFFF000u) == 0x0302A000u) {
@@ -140,7 +143,8 @@ static void io_write(RiscPc *m, uint32_t a, uint32_t v, int size)
         vidc20_write(&m->vidc, v);
         known = 1;
     } else if ((a & 0xFFFFF000u) == 0x03010000u) {
-        superio_write(&m->sio, (a & 0xFFF) >> 2, (uint8_t)v, now, &known);
+        if (size == 4) superio_write16(&m->sio, (a & 0xFFF) >> 2, (uint16_t)v, now, &known);
+        else           superio_write(&m->sio, (a & 0xFFF) >> 2, (uint8_t)v, now, &known);
         update_lines(m);
         reschedule(m, now);
     } else if ((a & 0xFFFFF000u) == 0x03012000u || (a & 0xFFFFF000u) == 0x0302A000u) {
@@ -268,6 +272,23 @@ void riscpc_eject_floppy(RiscPc *m, int drive)
     fdc_eject(&m->sio.fdc.media, drive);
 }
 
+int riscpc_attach_hd(RiscPc *m, const char *path)
+{
+    if (!ide_attach(&m->sio.ide, path)) return 0;
+    /* IDEDiscs (CMOS fisica &C7, bit 6-7): senza, ADFS non cerca il disco */
+    if (!(m->cmos.ram[0xC7] & 0xC0)) {
+        m->cmos.ram[0xC7] |= 0x40;
+        cmos_fix_checksum(&m->cmos);
+        m->cmos.dirty = 1;
+    }
+    return 1;
+}
+
+void riscpc_detach_hd(RiscPc *m)
+{
+    ide_detach(&m->sio.ide);
+}
+
 void riscpc_reset(RiscPc *m)
 {
     iomd_reset(&m->iomd, m->now);
@@ -321,6 +342,7 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
 void riscpc_destroy(RiscPc *m)
 {
     for (int d = 0; d < FDC_DRIVES; d++) fdc_eject(&m->sio.fdc.media, d);
+    ide_detach(&m->sio.ide);
     if (m->cmos_path[0] && m->cmos.dirty) cmos_save(&m->cmos, m->cmos_path);
     free(m->rom);
     free(m->ram);

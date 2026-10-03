@@ -115,6 +115,7 @@ add_library(riscpccore STATIC
     src/riscpc/ps2kbd.c
     src/riscpc/fdc82077.c
     src/riscpc/superio.c
+    src/riscpc/ide.c
     src/riscpc/riscpc.c
 )
 target_include_directories(riscpccore PUBLIC src src/riscpc)
@@ -124,6 +125,9 @@ add_executable(test_iomd tests/test_iomd.c src/riscpc/iomd.c src/riscpc/ps2kbd.c
 add_executable(test_fdc82077 tests/test_fdc82077.c src/riscpc/fdc82077.c src/archie/fdc.c)
 target_include_directories(test_fdc82077 PRIVATE src/riscpc src/archie)
 add_test(NAME fdc82077 COMMAND test_fdc82077)
+add_executable(test_ide tests/test_ide.c src/riscpc/ide.c)
+target_include_directories(test_ide PRIVATE src/riscpc)
+add_test(NAME ide COMMAND test_ide)
 target_include_directories(test_iomd PRIVATE src/riscpc)
 add_test(NAME iomd COMMAND test_iomd)
 

@@ -8,7 +8,7 @@
  * Senza --rom si apre la finestra iniziale (splash_win32.c) che fa scegliere
  * macchina, ROM, processore e memoria. Con --rom la macchina si deduce dal
  * nome della ROM (ROM350 e successive: Risc PC). Il Risc PC per ora non ha
- * floppy, disco fisso, HostFS ne' suono.
+ * disco fisso, HostFS ne' suono.
  *
  * HostFS: la cartella "HostFS" accanto all'eseguibile (creata se manca)
  * compare in RISC OS come disco, con l'icona sulla barra.
@@ -253,15 +253,18 @@ static void present(HDC dc)
     StretchDIBits(dc, ox, oy, sw, sh, 0, 0, w, h, app.pixels, &bi, DIB_RGB_COLORS, SRCCOPY);
 }
 
+/* le unita' floppy della macchina: WD1772 dell'Archimedes o 82077 del Risc PC */
+static Fdc *floppies(void) { return app.rpc ? &app.r.sio.fdc.media : &app.a.fdc; }
+
 static void insert_floppy(int drive, const char *path)
 {
-    fdc_eject(&app.a.fdc, drive);
-    if (fdc_insert(&app.a.fdc, drive, path)) {
+    fdc_eject(floppies(), drive);
+    if (fdc_insert(floppies(), drive, path)) {
         snprintf(app.floppy_name[drive], sizeof app.floppy_name[drive], "%s", base_name(path));
     } else {
         app.floppy_name[drive][0] = 0;
         char msg[600];
-        snprintf(msg, sizeof msg, "Immagine non riconosciuta:\n%s\n\nServe un'immagine ADFS .adf (800 KB o 640 KB) o un .hfe.", path);
+        snprintf(msg, sizeof msg, "Immagine non riconosciuta:\n%s\n\nServe un'immagine ADFS .adf (800 KB o 640 KB) o un .hfe; sul Risc PC anche ADFS F (1,6 MB) e DOS (720 KB, 1,44 MB).", path);
         MessageBoxA(app.hwnd, msg, "Archimedes", MB_ICONWARNING);
     }
     update_title();
@@ -270,9 +273,8 @@ static void insert_floppy(int drive, const char *path)
 /* dischetti cambiati da RISC OS (*HostFS_Insert): il titolo li segue */
 static void sync_floppy_names(void)
 {
-    if (app.rpc) return;
     for (int d = 0; d < 2; d++) {
-        const FdcDrive *fd = &app.a.fdc.drive[d];
+        const FdcDrive *fd = &floppies()->drive[d];
         const char *name = fd->image ? base_name(fd->path) : "";
         if (strcmp(name, app.floppy_name[d])) {
             snprintf(app.floppy_name[d], sizeof app.floppy_name[d], "%s", name);
@@ -392,8 +394,7 @@ static HMENU build_menu(void)
     AppendMenuA(mach, MF_SEPARATOR, 0, NULL);
     AppendMenuA(mach, MF_STRING, CMD_QUIT, "Quit");
     AppendMenuA(mouse, MF_STRING, CMD_RIGHT_MENU, "Right button is Menu");
-    if (!app.rpc) AppendMenuA(bar, MF_POPUP, (UINT_PTR)disc, "&Disc");
-    else          DestroyMenu(disc);
+    AppendMenuA(bar, MF_POPUP, (UINT_PTR)disc, "&Disc");
     AppendMenuA(bar, MF_POPUP, (UINT_PTR)mach, "&Machine");
     AppendMenuA(bar, MF_POPUP, (UINT_PTR)mouse, "M&ouse");
     return bar;
@@ -406,7 +407,7 @@ static void menu_command(int id)
     case CMD_INSERT1: choose_floppy(1); break;
     case CMD_EJECT0: case CMD_EJECT1: {
         int d = id == CMD_EJECT1;
-        fdc_eject(&app.a.fdc, d);
+        fdc_eject(floppies(), d);
         app.floppy_name[d][0] = 0;
         break;
     }
@@ -464,9 +465,9 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         CheckMenuItem(m, CMD_RAM1, app.a.ram_size == 1u << 20 ? MF_CHECKED : MF_UNCHECKED);
         CheckMenuItem(m, CMD_RAM2, app.a.ram_size == 2u << 20 ? MF_CHECKED : MF_UNCHECKED);
         CheckMenuItem(m, CMD_RAM4, app.a.ram_size == 4u << 20 ? MF_CHECKED : MF_UNCHECKED);
+        EnableMenuItem(m, CMD_EJECT0, floppies()->drive[0].image ? MF_ENABLED : MF_GRAYED);
+        EnableMenuItem(m, CMD_EJECT1, floppies()->drive[1].image ? MF_ENABLED : MF_GRAYED);
         if (app.rpc) return 0;
-        EnableMenuItem(m, CMD_EJECT0, app.a.fdc.drive[0].image ? MF_ENABLED : MF_GRAYED);
-        EnableMenuItem(m, CMD_EJECT1, app.a.fdc.drive[1].image ? MF_ENABLED : MF_GRAYED);
         return 0;
     }
     case WM_KEYDOWN:
@@ -549,7 +550,7 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_DROPFILES: {
         HDROP drop = (HDROP)wp;
         char path[MAX_PATH];
-        if (!app.rpc && DragQueryFileA(drop, 0, path, MAX_PATH)) insert_floppy(GetKeyState(VK_SHIFT) < 0 ? 1 : 0, path);
+        if (DragQueryFileA(drop, 0, path, MAX_PATH)) insert_floppy(GetKeyState(VK_SHIFT) < 0 ? 1 : 0, path);
         DragFinish(drop);
         return 0;
     }
@@ -676,6 +677,11 @@ int main(int argc, char **argv)
             return 1;
         }
         keys_init_ps2(&keys, rpc_key, &app.r);
+        for (int d = 0; d < 2; d++) {
+            if (!cfg.floppy[d]) continue;
+            if (riscpc_insert_floppy(&app.r, d, cfg.floppy[d]))
+                snprintf(app.floppy_name[d], sizeof app.floppy_name[d], "%s", base_name(cfg.floppy[d]));
+        }
     } else {
         cfg.ram_mb = ram ? ram : 4;
         app.mhz = mhz > 0 ? mhz : 8;
@@ -700,7 +706,7 @@ int main(int argc, char **argv)
     RegisterClassA(&wc);
     app.hwnd = CreateWindowA(wc.lpszClassName, app.rpc ? "Risc PC" : "Archimedes", WS_OVERLAPPEDWINDOW,
                              CW_USEDEFAULT, CW_USEDEFAULT, 1280, 1024, NULL, build_menu(), inst, NULL);
-    if (!app.rpc) DragAcceptFiles(app.hwnd, TRUE);
+    DragAcceptFiles(app.hwnd, TRUE);
     fit_window();
     update_title();
     ShowWindow(app.hwnd, SW_SHOW);
@@ -724,8 +730,8 @@ int main(int argc, char **argv)
         } else {
             archie_run(&app.a, ARC_MS(1000 / FRAME_HZ));
             audio_pump(&app.a);
-            sync_floppy_names();
         }
+        sync_floppy_names();
         HDC dc = GetDC(app.hwnd);
         present(dc);
         ReleaseDC(app.hwnd, dc);

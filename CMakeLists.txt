@@ -113,12 +113,17 @@ add_library(riscpccore STATIC
     src/riscpc/iomd.c
     src/riscpc/vidc20.c
     src/riscpc/ps2kbd.c
+    src/riscpc/fdc82077.c
+    src/riscpc/superio.c
     src/riscpc/riscpc.c
 )
 target_include_directories(riscpccore PUBLIC src src/riscpc)
 target_link_libraries(riscpccore archiecore)       # la CMOS e' quella dell'Archimedes
 
 add_executable(test_iomd tests/test_iomd.c src/riscpc/iomd.c src/riscpc/ps2kbd.c)
+add_executable(test_fdc82077 tests/test_fdc82077.c src/riscpc/fdc82077.c src/archie/fdc.c)
+target_include_directories(test_fdc82077 PRIVATE src/riscpc src/archie)
+add_test(NAME fdc82077 COMMAND test_fdc82077)
 target_include_directories(test_iomd PRIVATE src/riscpc)
 add_test(NAME iomd COMMAND test_iomd)
 

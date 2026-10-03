@@ -32,7 +32,7 @@ Windows: MSVC 2022 through CMake (no gcc). macOS: see below.
 
 ```
 cmake --build build --config Release
-build\Release\test_arm2.exe   (also test_arm6, test_iomd, test_basic, test_memc, test_vidc, test_kbd, test_cmos, test_fdc, test_keys_es ROM)
+build\Release\test_arm2.exe   (also test_arm6, test_iomd, test_fdc82077, test_basic, test_memc, test_vidc, test_kbd, test_cmos, test_fdc, test_keys_es ROM)
 .venv\Scripts\python tests\diff_unicorn.py        # ARM2 ALU oracle against Unicorn
 .venv\Scripts\python tests\diff_unicorn_arm6.py   # ARMv3 core, 32-bit modes, against Unicorn (SA1100)
 ```
@@ -70,7 +70,8 @@ type long test lines. The tools for that:
   starts at 15 s of emulated time. Other options: `--ram --cmos --trace-vectors
   --hist --trace-abort --wav`. It prints the POST report.
 - Risc PC: `riscpc_boot [--rom "roms/1. Major/ROM350"] --ms 8000 --png out.png
-  [--vram 0|1|2] [--ram MB] [--arm710] [--cmos file] [--keys "..." --keys-at ms]`.
+  [--vram 0|1|2] [--ram MB] [--arm710] [--cmos file] [--floppy a.adf --floppy2 b.adf]
+  [--keys "..." --keys-at ms]`.
   Keys are PS/2 set 2 from a UK layout, typed from 10 s (the desktop is up at
   ~8 s); extra tokens `{MOUSE dx,dy}` (y up, RISC OS scales by 1.5),
   `{SELECT}` `{MENU}` `{ADJUST}`, `{ESC}` `{TAB}` and arrows. It lists every access to an unknown
@@ -137,6 +138,13 @@ type long test lines. The tools for that:
   reuses stale translated blocks after a mode change (call `uc.ctl_flush_tb()`
   per case), and with `count=1` it doesn't complete exception returns (MOVS PC
   in a privileged mode keeps the mode and only sets the flags).
+- Emulated devices that schedule an event in response to a CPU access (the next
+  floppy byte 16 us later) must shorten the CPU slice in progress
+  (`reschedule` in `riscpc.c`), or the event is only seen at the end of the
+  slice: the Risc PC floppy DMA ran 10-20 times too slow and ADFS timed out.
+- Risc PC floppy (ADFS on RISC OS 3.5): DMA through FIQ, data at `&03012000`,
+  last byte with terminal count at `&0302A000`; index pulses on IRQA bit 2
+  (needed to see a disc); /DSKCHG on IOCR bit 2. Details in docs/riscpc-plan.md.
 - Fixed-point kernels need exact refinement in BASIC at sphere edges; a false hit
   gives a non-unit normal and the specular power overflows ("Number too big").
 

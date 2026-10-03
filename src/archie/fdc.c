@@ -191,14 +191,12 @@ static uint8_t *sector_ptr(FdcDrive *d, int cyl, int head, int idx)
     return d->image + off;
 }
 
-/* Disposizione della traccia sotto la testina dell'unita' selezionata. */
-static void get_track(Fdc *f, FdcTrack *t)
+/* Disposizione della traccia 'cyl' (posizione della testina), faccia 'head'. */
+static void track_at(FdcDrive *d, int cyl, int head, FdcTrack *t)
 {
-    FdcDrive *d = sel_drive(f);
     t->count = 0;
     t->fm = 0;
-    if (!d || !d->image) return;
-    int cyl = d->track, head = f->side;
+    if (!d || !d->image || cyl < 0 || cyl >= FDC_MAX_CYL || head < 0 || head > 1) return;
     struct FdcCustomTrack *c = d->custom[cyl * 2 + head];
     if (c) {
         *t = c->t;
@@ -224,6 +222,34 @@ static void get_track(Fdc *f, FdcTrack *t)
         pos = s->data_am + 1 + s->size + 2 + gap3;
     }
     t->count = d->sectors;
+}
+
+/* Traccia sotto la testina dell'unita' selezionata, come la vede il WD1772
+   (solo doppia densita': i dischi ad alta densita' non li legge). */
+static void get_track(Fdc *f, FdcTrack *t)
+{
+    FdcDrive *d = sel_drive(f);
+    t->count = 0;
+    t->fm = 0;
+    if (!d || d->hd) return;
+    track_at(d, d->track, f->side, t);
+}
+
+int fdc_track_sectors(FdcDrive *d, int cyl, int head, FdcSectorView *out, int max)
+{
+    static FdcTrack t;
+    track_at(d, cyl, head, &t);
+    int n = t.count < max ? t.count : max;
+    for (int i = 0; i < n; i++) {
+        memcpy(out[i].id, t.sec[i].id, 4);
+        out[i].size = t.sec[i].size;
+        out[i].data = t.sec[i].data_am >= 0 ? t.sec[i].data : NULL;
+        out[i].id_crc_ok = t.sec[i].id_crc_ok;
+        out[i].data_crc_ok = t.sec[i].data_crc_ok;
+        out[i].deleted = t.sec[i].deleted;
+        out[i].pos = t.sec[i].id_am;
+    }
+    return n;
 }
 
 /* ------------------------------------------------------------------ */
@@ -403,6 +429,7 @@ int fdc_insert(Fdc *f, int drive, const char *path)
         d->size = 0;
         d->write_protect = 1;
         d->first_sector = 0;
+        d->hd = 0;
         d->dirty = 0;
         d->disc_changed = 1;
         snprintf(d->path, sizeof d->path, "%s", path);
@@ -414,10 +441,14 @@ int fdc_insert(Fdc *f, int drive, const char *path)
     /* alcune immagini D/E in circolazione sono troncate di una o due tracce
        (es. 814080 byte): si completano con zeri */
     if (n < 819200 && n >= 819200 - 2 * 10240) full = 819200;
+    int first = 0, hd = 0;
     switch (full) {
-    case 819200: tracks = 80; sides = 2; sectors = 5;  ssize = 1024; break;
-    case 655360: tracks = 80; sides = 2; sectors = 16; ssize = 256;  break;
-    case 327680: tracks = 80; sides = 1; sectors = 16; ssize = 256;  break;
+    case 819200:  tracks = 80; sides = 2; sectors = 5;  ssize = 1024; break;
+    case 655360:  tracks = 80; sides = 2; sectors = 16; ssize = 256;  break;
+    case 327680:  tracks = 80; sides = 1; sectors = 16; ssize = 256;  break;
+    case 1638400: tracks = 80; sides = 2; sectors = 10; ssize = 1024; hd = 1; break;     /* ADFS F */
+    case 737280:  tracks = 80; sides = 2; sectors = 9;  ssize = 512; first = 1; break;   /* DOS 720 KB */
+    case 1474560: tracks = 80; sides = 2; sectors = 18; ssize = 512; first = 1; hd = 1; break; /* DOS 1,44 MB */
     default: fclose(fp); return 0;
     }
     uint8_t *img = calloc(1, (size_t)full);
@@ -439,7 +470,8 @@ int fdc_insert(Fdc *f, int drive, const char *path)
     d->sides = sides;
     d->sectors = sectors;
     d->sector_size = ssize;
-    d->first_sector = 0;
+    d->first_sector = first;
+    d->hd = hd;
     d->dirty = 0;
     d->disc_changed = 1;
     snprintf(d->path, sizeof d->path, "%s", path);
@@ -780,6 +812,8 @@ static int is_mark(const uint8_t *raw, const uint8_t *mk, int i, int fm, uint8_t
     return i > 0 && mk[i - 1] && raw[i - 1] == 0xA1 && !mk[i];
 }
 
+static void store_track(FdcDrive *d, int cyl, int side, struct FdcCustomTrack *c);
+
 /* Ricostruisce i settori dai byte scritti da Write Track e li applica. */
 static void apply_written_track(Fdc *f, const uint8_t *raw, const uint8_t *mk, int len)
 {
@@ -812,7 +846,14 @@ static void apply_written_track(Fdc *f, const uint8_t *raw, const uint8_t *mk, i
         i = (s->data_am >= 0 ? s->data_am + s->size : i + 6);
     }
 
-    int cyl = d->track, side = f->side;
+    store_track(d, d->track, f->side, c);
+}
+
+/* Una traccia riscritta: se ha la geometria dell'immagine va nel file,
+   altrimenti resta in memoria come traccia "custom". c viene preso. */
+static void store_track(FdcDrive *d, int cyl, int side, struct FdcCustomTrack *c)
+{
+    int fm = c->t.fm;
     int slot = cyl * 2 + side;
     int standard = !fm && cyl < d->tracks && side < d->sides && c->t.count == d->sectors;
     uint32_t seen = 0;
@@ -837,6 +878,26 @@ static void apply_written_track(Fdc *f, const uint8_t *raw, const uint8_t *mk, i
     } else {
         d->custom[slot] = c;
     }
+}
+
+void fdc_format_track(FdcDrive *d, int cyl, int head, const uint8_t (*ids)[4], int n, uint8_t fill)
+{
+    if (!d || !d->image || cyl < 0 || cyl >= FDC_MAX_CYL || head < 0 || head > 1) return;
+    struct FdcCustomTrack *c = calloc(1, sizeof *c);
+    if (!c) return;
+    int pos = 80;
+    for (int i = 0; i < n && i < MAX_SECS; i++) {
+        FdcSec *s = &c->t.sec[i];
+        memcpy(s->id, ids[i], 4);
+        s->size = 128 << (s->id[3] & 3);
+        s->id_am = pos;
+        s->data_am = pos + 44;
+        s->id_crc_ok = s->data_crc_ok = 1;
+        memset(c->data[i], fill, sizeof c->data[i]);
+        pos = s->data_am + s->size + 60;
+        c->t.count++;
+    }
+    store_track(d, cyl, head, c);
 }
 
 /* ------------------------------------------------------------------ */

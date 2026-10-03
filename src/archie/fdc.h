@@ -3,6 +3,9 @@
  * immagini disco ADFS (.adf: formati D/E da 800 KB, 80 tracce, 2 facce,
  * 5 settori da 1024 byte; anche L da 640 KB e 16 settori da 256 byte).
  *
+ * Immagini anche per il Risc PC (formati ad alta densita' e DOS, vedi
+ * fdc_insert), lette dall'82077 tramite fdc_track_sectors.
+ *
  * Collegamento sulla macchina (lo fa archie.c):
  *   registri 0-3 (stato/comando, traccia, settore, dato) all'IOC banco 1;
  *   latch A: bit 0-3 selezione unita' (attivi bassi), 4 faccia (0 = faccia 1),
@@ -28,6 +31,7 @@ typedef struct FdcDrive {
     uint8_t *image;              /* contenuto dell'immagine (malloc), NULL = vuota */
     uint32_t size;
     int      sides, tracks, sectors, sector_size, first_sector;
+    int      hd;                 /* alta densita' (ADFS F, DOS 1,44 MB): il WD1772 non la legge */
     int      write_protect;
     int      dirty;
     char     path[512];
@@ -75,5 +79,21 @@ int     fdc_drq(const Fdc *f);
 int     fdc_intrq(const Fdc *f);
 /* Linea "disc changed" per il pin C4 dell'IOC (attiva bassa). */
 int     fdc_disc_changed(const Fdc *f);
+
+/* Accesso ai settori di un'unita' per altri controller (l'82077 del Risc
+   PC): i settori della traccia nella posizione 'cyl' della testina, faccia
+   'head', in ordine di rotazione (pos: byte dall'indice). data punta al
+   contenuto (scrivibile: chi scrive mette d->dirty = 1), NULL se il campo
+   dati manca. */
+typedef struct FdcSectorView {
+    uint8_t  id[4];              /* C H R N */
+    int      size, pos;
+    uint8_t *data;
+    int      id_crc_ok, data_crc_ok, deleted;
+} FdcSectorView;
+int     fdc_track_sectors(FdcDrive *d, int cyl, int head, FdcSectorView *out, int max);
+/* Formatta una traccia con gli ID dati e il byte di riempimento: con la
+   geometria dell'immagine va nel file, altrimenti resta in memoria. */
+void    fdc_format_track(FdcDrive *d, int cyl, int head, const uint8_t (*ids)[4], int n, uint8_t fill);
 
 #endif

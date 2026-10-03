@@ -5,6 +5,7 @@
  * stata la CPU e salva lo schermo in PNG.
  *
  *   riscpc_boot --rom ROM350 [--ms 3000] [--png schermo.png] [--ram 16] [--vram 1]
+ *               [--floppy a.adf] [--floppy2 b.adf]
  *               [--keys "testo{ENTER}"] [--keys-at ms]   (vedi riscpc_keys.h; da 10 s)
  *               [--arm710] [--trace-io] [--trace-vectors] [--hist] [--trace N] [--trace-at istr]
  *               [--trace-modes] [--watch-low] [--break pc] [--watch-io lo hi] [--ring N]   (le ultime N istruzioni prima del primo abort o undef)
@@ -164,6 +165,7 @@ int main(int argc, char **argv)
 {
     RiscPcConfig cfg = { 0 };
     uint32_t m_watch_lo = 0, m_watch_hi = 0;
+    const char *floppy[2] = { NULL, NULL };
     const char *png = NULL;
     double ms = 3000, keys_at = 10000;
     cfg.rom_path = "roms/1. Major/ROM350";
@@ -181,6 +183,8 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--trace-at") && v) { trace_at = strtoull(v, NULL, 10); i++; }
         else if (!strcmp(a, "--ring") && v) { ring_size = (uint32_t)atoi(v); if (ring_size > 4096) ring_size = 4096; i++; }
         else if (!strcmp(a, "--trace-modes")) trace_modes = 1;
+        else if (!strcmp(a, "--floppy") && v)  { floppy[0] = v; i++; }
+        else if (!strcmp(a, "--floppy2") && v) { floppy[1] = v; i++; }
         else if (!strcmp(a, "--keys") && v)  { parse_keys(v); i++; }
         else if (!strcmp(a, "--keys-at") && v) { keys_at = atof(v); i++; }
         else if (!strcmp(a, "--watch-low")) watch_low = 1;
@@ -201,6 +205,11 @@ int main(int argc, char **argv)
     char err[256];
     if (!riscpc_create(&m, &cfg, err, sizeof err)) { fprintf(stderr, "%s\n", err); return 1; }
     mach = &m;
+    for (int d = 0; d < 2; d++)
+        if (floppy[d] && !riscpc_insert_floppy(&m, d, floppy[d])) {
+            fprintf(stderr, "immagine floppy non valida: %s\n", floppy[d]);
+            return 1;
+        }
     m.io_hook = io_hook;
     if (m_watch_hi) { m.io_trace = io_watch; m.trace_lo = m_watch_lo; m.trace_hi = m_watch_hi; }
     m.cpu.exception_hook = exc_hook;

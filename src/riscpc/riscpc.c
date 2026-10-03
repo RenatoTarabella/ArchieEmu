@@ -36,6 +36,9 @@ uint32_t riscpc_border_rgb(const RiscPc *m)
 
 static void update_lines(RiscPc *m)
 {
+    /* floppy: interrupt sull'IRQ B bit 4, richiesta di dato sul FIQ bit 0 */
+    iomd_set_irqb_line(&m->iomd, 0x10, fdc82077_irq(&m->sio.fdc));
+    if (fdc82077_drq(&m->sio.fdc)) m->iomd.fiq |= 0x01; else m->iomd.fiq &= (uint8_t)~0x01;
     m->cpu.irq_line = iomd_irq(&m->iomd);
     m->cpu.fiq_line = iomd_fiq(&m->iomd);
 }
@@ -81,6 +84,17 @@ static void unknown(RiscPc *m, int write, uint32_t a, uint32_t v, int size)
     if (m->io_hook) m->io_hook(m->hook_user, write, a, v, size);
 }
 
+/* Un accesso al floppy puo' programmare un evento vicino (il prossimo byte
+   dopo 16-32 us): la fetta di CPU in corso si accorcia fin li', altrimenti
+   l'evento verrebbe visto solo alla fine della fetta. */
+static void reschedule(RiscPc *m, ArcTime now)
+{
+    ArcTime e = fdc82077_next_event(&m->sio.fdc);
+    if (e == ~(ArcTime)0 || !m->slice_stop) return;
+    uint64_t at = m->cpu.cycles + (e > now ? (((e - now) << 16) + m->units_per_cycle_q16 - 1) / m->units_per_cycle_q16 : 1);
+    if (at < m->slice_stop) m->slice_stop = at;
+}
+
 static uint32_t io_read(RiscPc *m, uint32_t a, int size)
 {
     ArcTime now = riscpc_now(m);
@@ -90,6 +104,17 @@ static uint32_t io_read(RiscPc *m, uint32_t a, int size)
         v = iomd_read(&m->iomd, a & 0xFFFFF, now, &known);
         if (a & 0x1FF000u) known = 0;
         update_lines(m);
+    } else if ((a & 0xFFFFF000u) == 0x03010000u) {
+        v = superio_read(&m->sio, (a & 0xFFF) >> 2, now, &known);
+        update_lines(m);
+        reschedule(m, now);
+    } else if ((a & 0xFFFFF000u) == 0x03012000u || (a & 0xFFFFF000u) == 0x0302A000u) {
+        /* DACK del floppy: il gestore FIQ di ADFS prende qui i byte; a
+           &0302A000 con il terminal count (l'ultimo byte) */
+        v = fdc82077_dack_read(&m->sio.fdc, (a & 0xFFFFF000u) == 0x0302A000u, now);
+        known = 1;
+        update_lines(m);
+        reschedule(m, now);
     } else if ((a & 0xFFFF0000u) == 0x03310000u) {
         /* tasti del mouse, attivi bassi: bit 4 Adjust, 5 Menu, 6 Select */
         v = (uint32_t)(~m->mouse_buttons & 7u) << 4;
@@ -114,6 +139,15 @@ static void io_write(RiscPc *m, uint32_t a, uint32_t v, int size)
     } else if ((a & 0xFFF00000u) == 0x03400000u) {
         vidc20_write(&m->vidc, v);
         known = 1;
+    } else if ((a & 0xFFFFF000u) == 0x03010000u) {
+        superio_write(&m->sio, (a & 0xFFF) >> 2, (uint8_t)v, now, &known);
+        update_lines(m);
+        reschedule(m, now);
+    } else if ((a & 0xFFFFF000u) == 0x03012000u || (a & 0xFFFFF000u) == 0x0302A000u) {
+        fdc82077_dack_write(&m->sio.fdc, (uint8_t)v, (a & 0xFFFFF000u) == 0x0302A000u, now);
+        known = 1;
+        update_lines(m);
+        reschedule(m, now);
     }
     if (!known) unknown(m, 1, a, v, size);
     if (m->io_trace && a >= m->trace_lo && a <= m->trace_hi) m->io_trace(m->hook_user, 1, a, v, size);
@@ -173,7 +207,12 @@ static void lines_write(void *ctx, uint8_t v)
 static uint8_t lines_read(void *ctx)
 {
     RiscPc *m = ctx;
-    return (uint8_t)(0x3E | (m->sda_in ? 1 : 0));
+    /* C2: la linea /DSKCHG dell'unita' selezionata, attiva bassa come sul
+       cavo: 0 = disco assente o appena cambiato, 1 = disco presente (torna
+       a 1 al primo passo della testina con il disco dentro) */
+    const FdcDrive *d = &m->sio.fdc.media.drive[m->sio.fdc.dor & 3];
+    int changed = !d->image || d->disc_changed;
+    return (uint8_t)(0x3A | (changed ? 0 : 4) | (m->sda_in ? 1 : 0));
 }
 
 /* ------------------------------------------------------------------ */
@@ -219,13 +258,25 @@ static uint8_t *load_file(const char *path, uint32_t *size)
     return d;
 }
 
+int riscpc_insert_floppy(RiscPc *m, int drive, const char *path)
+{
+    return fdc_insert(&m->sio.fdc.media, drive, path);
+}
+
+void riscpc_eject_floppy(RiscPc *m, int drive)
+{
+    fdc_eject(&m->sio.fdc.media, drive);
+}
+
 void riscpc_reset(RiscPc *m)
 {
     iomd_reset(&m->iomd, m->now);
+    superio_reset(&m->sio, m->now);
     ps2kbd_reset(&m->kbd);
     vidc20_reset(&m->vidc);
     arm6_reset(&m->cpu);
     m->frame_start = m->now;
+    m->index_next = m->now - m->now % FDC82077_REV + FDC82077_REV;
     m->flyback = 0;
     update_lines(m);
 }
@@ -256,6 +307,7 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
     ArmBus bus = { m, bus_r32, bus_r8, bus_w32, bus_w8 };
     arm6_init(&m->cpu, &bus, cfg->arm710 ? ARM6_ID_ARM710 : ARM6_ID_ARM610);
     IomdHooks hooks = { m, lines_write, lines_read, to_keyboard, from_keyboard };
+    superio_init(&m->sio);
     iomd_init(&m->iomd, &hooks);
     if (cfg->cmos_path) snprintf(m->cmos_path, sizeof m->cmos_path, "%s", cfg->cmos_path);
     cmos_init(&m->cmos, cfg->cmos_path);
@@ -268,6 +320,7 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
 
 void riscpc_destroy(RiscPc *m)
 {
+    for (int d = 0; d < FDC_DRIVES; d++) fdc_eject(&m->sio.fdc.media, d);
     if (m->cmos_path[0] && m->cmos.dirty) cmos_save(&m->cmos, m->cmos_path);
     free(m->rom);
     free(m->ram);
@@ -320,6 +373,13 @@ void riscpc_run(RiscPc *m, ArcTime duration)
         m->now = now;
         m->cycle_base = m->cpu.cycles;
         iomd_update(&m->iomd, now);
+        fdc82077_update(&m->sio.fdc, now);
+        /* impulso di indice del floppy (IRQ A bit 2): ADFS li conta per
+           capire se nell'unita' c'e' un disco che gira */
+        while (now >= m->index_next) {
+            if (fdc82077_spinning(&m->sio.fdc)) m->iomd.irqa |= 0x04;
+            m->index_next += FDC82077_REV;
+        }
         sound_update(m, now);
         video_update(m, now);
         update_lines(m);
@@ -329,12 +389,14 @@ void riscpc_run(RiscPc *m, ArcTime duration)
         ArcTime e = iomd_next_event(&m->iomd, now);  if (e < next) next = e;
         e = m->flyback ? m->frame_start + FRAME : m->frame_start + FLYBACK;
         if (e < next) next = e;
+        e = fdc82077_next_event(&m->sio.fdc);         if (e > now && e < next) next = e;
+        if (m->index_next < next) next = m->index_next;
         if (iomd_sound_active(&m->iomd) && m->snd_next < next) next = m->snd_next > now ? m->snd_next : now + 1;
 
         uint64_t cycles = (((next - now) << 16) + m->units_per_cycle_q16 - 1) / m->units_per_cycle_q16;
         if (!cycles) cycles = 1;
-        uint64_t stop = m->cpu.cycles + cycles;
-        while (m->cpu.cycles < stop && !m->cpu.halted) arm6_step(&m->cpu);
+        m->slice_stop = m->cpu.cycles + cycles;
+        while (m->cpu.cycles < m->slice_stop && !m->cpu.halted) arm6_step(&m->cpu);
     }
 }
 

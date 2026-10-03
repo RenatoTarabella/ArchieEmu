@@ -7,6 +7,7 @@
  *   &01000000  ROM di estensione (assente)
  *   &02000000  VRAM (0, 1 o 2 MB, ripetuta)
  *   &03010000  Super I/O 82C711 (porte del PC * 4)
+ *   &03012000  DACK del floppy (il dato del DMA); &0302A000 lo stesso con TC
  *   &03200000  IOMD
  *   &03310000  tasti del mouse (bit 4-6, attivi bassi)
  *   &033C0000  identita' delle schede (assenti)
@@ -25,6 +26,7 @@
 #include "iomd.h"
 #include "vidc20.h"
 #include "ps2kbd.h"
+#include "superio.h"
 
 typedef struct RiscPcConfig {
     const char *rom_path;
@@ -44,6 +46,7 @@ typedef struct RiscPc {
     Vidc20   vidc;
     Cmos     cmos;
     Ps2Kbd   kbd;
+    SuperIo  sio;
 
     uint8_t *rom, *ram, *vram;
     uint32_t rom_size, ram_size, vram_size;
@@ -57,6 +60,8 @@ typedef struct RiscPc {
 
     int      mouse_buttons;      /* premuti: bit 0 Adjust, 1 Menu, 2 Select */
 
+    uint64_t slice_stop;         /* fine della fetta di CPU in corso (cicli) */
+    ArcTime  index_next;         /* prossimo impulso di indice del floppy */
     ArcTime  snd_next;          /* prossimo blocco di 16 byte del DMA del suono */
 
     ArcTime  frame_start;
@@ -83,6 +88,10 @@ void riscpc_render(RiscPc *m, uint32_t *out, int stride, int *w, int *h);
 /* colore del bordo, 0x00RRGGBB */
 uint32_t riscpc_border_rgb(const RiscPc *m);
 void riscpc_set_mhz(RiscPc *m, double mhz);
+
+/* Floppy: immagine nell'unita' 0 o 1 (0 = errore), espulsione (salva) */
+int  riscpc_insert_floppy(RiscPc *m, int drive, const char *path);
+void riscpc_eject_floppy(RiscPc *m, int drive);
 
 /* Tastiera: codice del set 2 (vedi ps2kbd.h), premuto o rilasciato */
 void riscpc_key(RiscPc *m, uint32_t code, int down);

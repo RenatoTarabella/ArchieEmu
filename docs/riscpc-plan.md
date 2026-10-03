@@ -108,7 +108,22 @@ codice copiato in questo progetto MIT.
    (`{MOUSE dx,dy}`, `{SELECT}`, `{MENU}`, `{ADJUST}`). Senza disco di boot
    la cartella Apps resta vuota ("Resources:$.Apps not found", la
    riempiono gli `*AddApp` del boot).
-4. **Floppy**: 82C711/82077 con il suo DMA o FIQ; le immagini ADF esistenti.
+4. **Floppy** (fatto): Super I/O 82C711 (`superio.c`: RISC OS prova prima
+   il 37C665 con &55 &55 a &3F0, poi programma l'82C710/711 via &2FA/&3FA e
+   &390/&391) e controller 82077 (`fdc82077.c`) con le unita' e le immagini
+   dell'Archimedes (`fdc_track_sectors`, `fdc_format_track` esportate da
+   archie/fdc.c). Cose imparate sulla ROM:
+   - ADFS usa il DMA: SPECIFY con ND = 0, il DRQ va al FIQ bit 0 e il
+     gestore FIQ prende i byte a &03012000 (DACK) e l'ultimo a &0302A000
+     (DACK con terminal count); l'interrupt del controller e' l'IRQ B bit 4;
+   - gli impulsi di indice arrivano all'IRQ A bit 2: ADFS li conta per
+     capire se nell'unita' c'e' un disco che gira (senza: "drive empty");
+   - la linea /DSKCHG dell'unita' e' il bit 2 di IOCR (C2);
+   - velocita' (CCR) 0 = alta densita', 2 (o 3) = doppia.
+   Funzionano lettura e scrittura di ADFS D/E (anche HFE in sola lettura) e
+   `*Format :0 F` su un'immagine vuota da 1,6 MB; riconosciute anche le
+   immagini DOS da 720 KB e 1,44 MB. Nella finestra: menu Disc e
+   trascinamento dei file anche per il Risc PC.
 5. **IDE**: immagini di hard disc (`.hdf`), ADFS su IDE, formattazione con
    HForm.
 6. **VIDC20 completo e suono**: modi alti a 16/32 bpp, cursore hardware,

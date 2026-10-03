@@ -752,7 +752,7 @@ int main(int argc, char **argv)
         rcfg.vram_mb = vram >= 0 ? (uint32_t)vram : 2;
         rcfg.arm710 = arm710;
         rcfg.strongarm = strongarm;
-        rcfg.mhz = mhz > 0 ? mhz : strongarm ? 202 : arm710 ? 40 : 30;
+        rcfg.mhz = mhz > 0 ? mhz : strongarm ? 100 : arm710 ? 40 : 30;
         rcfg.hostfs_dir = cfg.hostfs_dir ? cfg.hostfs_dir : hostfs_folder();
         app.mhz = rcfg.mhz;
         if (!riscpc_create(&app.r, &rcfg, err, sizeof err)) {

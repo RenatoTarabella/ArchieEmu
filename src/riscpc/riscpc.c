@@ -443,7 +443,9 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
         m->cpu.swi_hook = riscpc_swi;
         m->cpu.swi_user = m;
     }
-    m->mhz = cfg->mhz > 0 ? cfg->mhz : cfg->strongarm ? 202 : cfg->arm710 ? 40 : 30;
+    /* lo StrongARM vero va a 202 MHz ma col bus a 16 MHz; senza le cache e la
+       banda della memoria emulate, 100 MHz equivalenti (che stanno nel tempo reale) */
+    m->mhz = cfg->mhz > 0 ? cfg->mhz : cfg->strongarm ? 100 : cfg->arm710 ? 40 : 30;
     update_speed(m);
     riscpc_reset(m);
     return 1;

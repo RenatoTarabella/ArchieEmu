@@ -183,7 +183,7 @@ static void fill_lists(void)
     if (rpc) {
         SendMessageA(sp.cpu, CB_ADDSTRING, 0, (LPARAM)"ARM610, 30 MHz (Risc PC 600)");
         SendMessageA(sp.cpu, CB_ADDSTRING, 0, (LPARAM)"ARM710, 40 MHz (Risc PC 700)");
-        SendMessageA(sp.cpu, CB_ADDSTRING, 0, (LPARAM)"StrongARM, 202 MHz (needs RISC OS 3.7)");
+        SendMessageA(sp.cpu, CB_ADDSTRING, 0, (LPARAM)"StrongARM SA-110 (RISC OS 3.7 only)");
         int cpu = ini_int("cpu", CPU_ARM610);
         SendMessageA(sp.cpu, CB_SETCURSEL, cpu == CPU_SA110 ? 2 : cpu == CPU_ARM710 ? 1 : 0, 0);
     } else {
@@ -229,6 +229,13 @@ static void splash_accept(void)
     int item = (int)SendMessageA(sp.rom, CB_GETCURSEL, 0, 0);
     if (item < 0) return;
     const RomEntry *r = &roms[sp.rom_index[item]];
+    /* lo StrongARM vuole RISC OS 3.7: con le ROM precedenti non parte (come sul vero) */
+    if (sp.riscpc_on && SendMessageA(sp.cpu, CB_GETCURSEL, 0, 0) == 2 && r->version < 370) {
+        MessageBoxA(sp.wnd, "The StrongARM needs RISC OS 3.7: RISC OS 3.5 and 3.6 do not run on it, "
+                    "as on the real Risc PC.\n\nChoose RISC OS 3.70 or 3.71, or an ARM610/ARM710 processor.",
+                    "ArchieEmu", MB_ICONINFORMATION);
+        return;
+    }
     c->riscpc = sp.riscpc_on;
     snprintf(c->rom, sizeof c->rom, "%s", r->path);
     splash_rom_name(r->version, c->rom_name, sizeof c->rom_name);

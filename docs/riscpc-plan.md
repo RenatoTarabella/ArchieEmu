@@ -168,7 +168,8 @@ codice copiato in questo progetto MIT.
    (&033C0000, un byte per parola), la SWI intercettata dal core ARMv3, la
    memoria logica attraverso la MMU (`arc_hostfs_init_mem`, `HostFsRegs`).
 7. **ARM710 e StrongARM** (fatto): l'ARM710 e' l'ARM610 con un altro ID e
-   gli abort "tardivi" (bit L). StrongARM SA-110 (`--strongarm`, 202 MHz):
+   gli abort "tardivi" (bit L). StrongARM SA-110 (`--strongarm`, 100 MHz equivalenti: a 202 l'emulatore
+   andava al 60% del tempo reale, e il chip vero e' frenato dal bus a 16 MHz):
    l'ARMv4 nello stesso core (`v4`, attivato dall'ID &4401A102):
    LDRH/STRH/LDRSB/LDRSH, UMULL/UMLAL/SMULL/SMLAL, CP15 con il controllo
    fino al bit 12 e P/D sempre accesi, TLB in c8; il bus ha gli accessi a

@@ -274,7 +274,8 @@ when the window opens.
 Choose **Acorn Risc PC** in the startup dialog (or `archie.exe --rom
 "roms\1. Major\ROM350"`). Supported ROMs: RISC OS 3.50, 3.60, 3.70 and 3.71;
 processors ARM610 (30 MHz, Risc PC 600), ARM710 (40 MHz) and StrongARM SA-110
-(202 MHz, RISC OS 3.7 only, as on the real machine).
+(RISC OS 3.7 only, as on the real machine; emulated at about 100 MHz, since the
+real chip is held back by the 16 MHz bus and caches are not modelled).
 
 | Module | File | What it does |
 |---|---|---|

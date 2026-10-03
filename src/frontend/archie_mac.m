@@ -858,7 +858,7 @@ typedef struct MachineChoice {
     [self.cpu removeAllItems];
     if (rpc) {
         [self.cpu addItemsWithTitles:@[ @"ARM610, 30 MHz (Risc PC 600)", @"ARM710, 40 MHz (Risc PC 700)",
-                                        @"StrongARM, 202 MHz (needs RISC OS 3.7)" ]];
+                                        @"StrongARM SA-110 (RISC OS 3.7 only)" ]];
         NSInteger cpu = [u integerForKey:@"CPU"];
         [self.cpu selectItemAtIndex:cpu >= 0 && cpu <= 2 ? cpu : 0];
     } else {
@@ -968,6 +968,19 @@ static int run_splash(MachineChoice *c, int *found)
     NSModalResponse r = [NSApp runModalForWindow:w];
     [w orderOut:nil];
     if (r != NSModalResponseOK || sc.rom.indexOfSelectedItem < 0) return 0;
+    /* lo StrongARM vuole RISC OS 3.7: con le ROM precedenti non parte (come sul vero) */
+    while (sc.rpc && sc.cpu.indexOfSelectedItem == 2 &&
+           roms[sc.romIndex[(NSUInteger)sc.rom.indexOfSelectedItem].intValue].version < 370) {
+        NSAlert *al = [NSAlert new];
+        al.messageText = @"The StrongARM needs RISC OS 3.7";
+        al.informativeText = @"RISC OS 3.5 and 3.6 do not run on a StrongARM, as on the real Risc PC. "
+                              "Choose RISC OS 3.70 or 3.71, or an ARM610/ARM710 processor.";
+        [al runModal];
+        [w makeKeyAndOrderFront:nil];
+        r = [NSApp runModalForWindow:w];
+        [w orderOut:nil];
+        if (r != NSModalResponseOK || sc.rom.indexOfSelectedItem < 0) return 0;
+    }
 
     const MacRom *rom = &roms[sc.romIndex[(NSUInteger)sc.rom.indexOfSelectedItem].intValue];
     c->riscpc = sc.rpc;
@@ -1074,7 +1087,7 @@ int main(int argc, char **argv)
             rcfg.vram_mb = vram >= 0 ? (uint32_t)vram : 2;
             rcfg.arm710 = arm710;
             rcfg.strongarm = strongarm;
-            rcfg.mhz = mhz > 0 ? mhz : strongarm ? 202 : arm710 ? 40 : 30;
+            rcfg.mhz = mhz > 0 ? mhz : strongarm ? 100 : arm710 ? 40 : 30;
             rcfg.hostfs_dir = cfg.hostfs_dir;
             app.mhz = rcfg.mhz;
             if (!riscpc_create(&app.r, &rcfg, err, sizeof err)) {

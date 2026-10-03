@@ -109,11 +109,13 @@ void vidc20_render(const Vidc20 *v, Vidc20Mem mem, void *ctx, uint32_t start,
 }
 
 /* Posizione del cursore rispetto all'inizio del display: VCSR conta da
-   VDSR; in orizzontale RISC OS scrive HCSR = x + HDSR - 20 a 1, 4 e 8 bpp
-   (col puntatore contro il bordo sinistro HCSR = HDSR - 20). A 16 e 32 bpp
-   la pipeline dei dati e' piu' corta di 2 pixel e RISC OS mette HDSR piu'
-   avanti di 2, mentre HCSR non cambia: lo scarto e' 22. */
-#define CURSOR_X_DELAY 20
+   VDSR; in orizzontale il primo pixel dell'immagine e' a HCSR - HDSR - 1 a
+   1, 4 e 8 bpp. Misurato confrontando la punta disegnata con la posizione
+   che RISC OS 3.5 da' a BASIC (MOUSE X,Y): la freccia sta 21 colonne dentro
+   l'immagine da 32 pixel (contro il bordo sinistro HCSR = HDSR - 20). A 16 e
+   32 bpp la pipeline dei dati e' piu' corta di 2 pixel e RISC OS mette
+   HDSR piu' avanti di 2, mentre HCSR non cambia. */
+#define CURSOR_X_DELAY (-1)
 int vidc20_cursor_height(const Vidc20 *v)
 {
     int hgt = (int)v->vert[7] - (int)v->vert[6];

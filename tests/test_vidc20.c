@@ -91,11 +91,11 @@ int main(void)
     vidc20_render(&v, mem, NULL, 0, out, 640, &w, &hh);
     CHECK_EQ(out[0], 0x123456);
 
-    /* cursore: HCSR = x + HDSR - 20 (4 bpp); il colore 1 e' cursor[0] */
+    /* cursore: primo pixel a HCSR - HDSR - 1 (4 bpp); il colore 1 e' cursor[0] */
     program(0x44C, 0x1404, h, vt);
     vidc20_write(&v, 0x50000000u | 0x0000FF);       /* colore 1: rosso */
     uint8_t cur[8 * 2] = { 0x01 };                  /* primo pixel colore 1 */
-    v.horiz[6] = 100 + 124 - 20;
+    v.horiz[6] = 100 + 124 + 1;
     v.vert[6] = 32 + 10;
     v.vert[7] = 32 + 12;
     memset(out, 0, sizeof out);

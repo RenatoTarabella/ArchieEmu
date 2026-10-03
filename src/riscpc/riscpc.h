@@ -36,7 +36,7 @@ typedef struct RiscPcConfig {
     const char *cmos_path;
     double      mhz;           /* clock della CPU: 30 (ARM610) o 40 (ARM710) */
     int         arm710;
-    int         strongarm;     /* StrongARM SA-110 (ARMv4), 202 MHz */
+    int         strongarm;     /* StrongARM SA-110 (ARMv4): 100 MHz equivalenti */
     const char *hostfs_dir;    /* cartella dell'host vista come HostFS (NULL = niente scheda) */
 } RiscPcConfig;
 

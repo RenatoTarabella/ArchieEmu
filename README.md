@@ -30,6 +30,12 @@ through interfaces. It runs in two flavours:
   both machines as native apps. The Archimedes and Risc PC app finds your RISC OS
   ROMs in `Documents/ArchieEmu/roms` (it asks for a 3.11 ROM if there is none).
 
+**Linux** (x86-64, glibc 2.34 or later: Ubuntu 22.04, Debian 12 and newer; needs SDL2):
+
+- [**ArchieEmu-BASIC-v1.3-linux-x64.tar.gz**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.3/ArchieEmu-BASIC-v1.3-linux-x64.tar.gz)
+  and [**ArchieEmu-Archimedes-v1.3-linux-x64.tar.gz**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.3/ArchieEmu-Archimedes-v1.3-linux-x64.tar.gz):
+  the same two machines, portable; unpack and run `./armwin` or `./archie`.
+
 All releases: [Releases page](https://github.com/RenatoTarabella/ArchieEmu/releases).
 
 | RISC OS 3.11 desktop | RISC OS 3.5 on the Risc PC | Ray tracer in BBC BASIC + ARM assembler |

@@ -3,6 +3,14 @@ project(ARM C)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+# Linux: glibc in modo C99 nasconde timespec_get (C11) e parte di POSIX
+# (_GNU_SOURCE no: tirerebbe dentro le funzioni C23 di glibc 2.38 e gli
+# eseguibili non partirebbero sulle distribuzioni meno recenti); la
+# libreria matematica va collegata a parte
+if(UNIX AND NOT APPLE)
+    add_compile_definitions(_DEFAULT_SOURCE _ISOC11_SOURCE)
+    link_libraries(m)
+endif()
 
 if(MSVC)
     add_compile_options(/W4 /wd4100 /D_CRT_SECURE_NO_WARNINGS /utf-8)
@@ -199,6 +207,38 @@ if(APPLE)
         set_target_properties(${t} PROPERTIES
             MACOSX_BUNDLE_SHORT_VERSION_STRING "1.3" MACOSX_BUNDLE_BUNDLE_VERSION "1.3")
     endforeach()
+endif()
+
+# Le due finestre per Linux (SDL2): -DSDL2_DIR=... o SDL2_INCLUDE_DIR/SDL2_LIBRARY
+# se SDL2 non e' installato nel sistema
+if(UNIX AND NOT APPLE)
+    find_package(SDL2 CONFIG QUIET)
+    if(TARGET SDL2::SDL2)
+        set(SDL2_LIBS SDL2::SDL2)
+    else()
+        find_path(SDL2_INCLUDE_DIR SDL.h PATH_SUFFIXES SDL2)
+        find_library(SDL2_LIBRARY NAMES SDL2 SDL2-2.0)
+        if(SDL2_INCLUDE_DIR AND SDL2_LIBRARY)
+            add_library(sdl2_found INTERFACE)
+            target_include_directories(sdl2_found INTERFACE ${SDL2_INCLUDE_DIR})
+            target_compile_definitions(sdl2_found INTERFACE _REENTRANT)
+            target_link_libraries(sdl2_found INTERFACE ${SDL2_LIBRARY})
+            set(SDL2_LIBS sdl2_found)
+        endif()
+    endif()
+    if(SDL2_LIBS)
+        add_library(sdlui STATIC src/frontend/sdl_ui.c src/frontend/sdl_keys.c)
+        target_include_directories(sdlui PUBLIC src src/frontend)
+        target_link_libraries(sdlui PUBLIC ${SDL2_LIBS})
+
+        add_executable(armwin src/frontend/armwin_sdl.c)
+        target_link_libraries(armwin armcore sdlui)
+
+        add_executable(archie src/frontend/archie_sdl.c src/frontend/archie_keys.c src/frontend/romlist.c)
+        target_link_libraries(archie riscpccore archiecore sdlui)
+    else()
+        message(STATUS "SDL2 non trovato: niente finestre per Linux (armwin, archie)")
+    endif()
 endif()
 
 # Collaudo della tastiera con la disposizione spagnola di Windows

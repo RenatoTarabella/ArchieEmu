@@ -20,7 +20,12 @@ New-Item -ItemType Directory -Force "$b\third_party\riscos", "$b\disc" | Out-Nul
 Copy-Item "$bin\armwin.exe", LICENSE $b
 Copy-Item tools\dist\README-BASIC.txt "$b\README.txt"
 Copy-Item third_party\riscos\BASIC, third_party\riscos\LICENSE, third_party\riscos\README.md "$b\third_party\riscos"
-Copy-Item disc\* "$b\disc"
+# solo i file del repository, sottocartelle comprese (non quelli lasciati in locale)
+foreach ($f in git ls-files disc) {
+    $dst = Join-Path $b $f
+    New-Item -ItemType Directory -Force (Split-Path $dst) | Out-Null
+    Copy-Item $f $dst
+}
 
 # Archimedes: ROM e dischetti li mette l'utente
 $a = "$stage\ArchieEmu-Archimedes"

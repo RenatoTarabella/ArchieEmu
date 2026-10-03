@@ -12,7 +12,7 @@ lessons learned that are not obvious from the code.
   (kernel SWIs, VDU driver, HostFS, module loader), `src/machine` the BBC BASIC
   machine, `src/archie` the low-level Archimedes (MEMC1a, IOC, VIDC1a, keyboard,
   CMOS, WD1772), `src/riscpc` the Risc PC (IOMD, VIDC20; plan and status in
-  `docs/riscpc-plan.md`), `src/frontend` Win32 and console front ends.
+  `docs/riscpc-plan.md`), `src/frontend` Win32, Cocoa, SDL2 (Linux) and console front ends.
 - Executables: `armwin` / `armbasic` (BASIC machine, window / console),
   `archie` (window for both the Archimedes and the Risc PC: without `--rom` a
   startup dialog, `splash_win32.c`, picks machine, ROM, CPU and memory and
@@ -46,7 +46,9 @@ Release packages: `tools/make_dist.ps1` (Windows portable zips, static CRT) and
 
 Native Cocoa front ends (`armwin_mac.m`, `archie_mac.m`, `mac_keys.c`), built on
 the Mac mini over SSH (`renatos-mini.fritz.box`, key in `~/.ssh/config`; cmake is
-in `/opt/homebrew/bin`). Copy the tree with `tar` over `ssh` to `~/ArchieEmu`.
+in `/opt/homebrew/bin`). Copy the tree with `tar` over `ssh` to `~/ArchieEmu`,
+**only the files git tracks** (`git ls-files -z | tar --null -T - -cf - | ssh ...`):
+a plain `tar` of the folder once shipped the local `disc/JugAnim,ffd` in the DMG.
 
 - GUI apps can only be launched from SSH (`open ...app`) while the user is logged
   in on the Mac's desktop (`stat -f%Su /dev/console` must not be `root`), and
@@ -54,6 +56,29 @@ in `/opt/homebrew/bin`). Copy the tree with `tar` over `ssh` to `~/ArchieEmu`.
 - `make_dmg.sh` signs with the Developer ID and notarizes with the `runebrace`
   notarytool profile; the keychain is unlocked from `~/.rb-keychain`, as for Runebrace.
 - `[NSApp run]` never returns: cleanup (CMOS save) lives in `applicationWillTerminate`.
+
+### Linux
+
+SDL2 front ends (`armwin_sdl.c`, `archie_sdl.c`; `sdl_ui.c` draws menu bar,
+menus, messages and a file list with the RISC OS font, `sdl_keys.c` maps
+scancodes to Windows virtual keys for `archie_keys.c`). Built on frigate, the
+Debian 13 box that also packs Runebrace: `risc66@192.168.188.100` with
+`~/.ssh/id_ed25519_runebrace` (no root, no sudo, no desktop). There, cmake is in
+`~/.local/bin` (pip) and the SDL2 headers come from the `libsdl2-dev` package
+extracted in `~/archie-deps/sysroot` (the library is the system one):
+
+```
+R=$HOME/archie-deps/sysroot/usr
+CMAKE_ARGS="-DSDL2_INCLUDE_DIR=$R/include/SDL2 -DSDL2_LIBRARY=/usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0 -DCMAKE_C_FLAGS=-I$R/include/x86_64-linux-gnu" sh tools/make_linux.sh 1.3
+```
+
+- Test without a screen: `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy
+  ARCHIE_SDL_SHOT=out.png ARCHIE_SDL_SHOT_MS=20000 ./archie --rom ...` saves the
+  window after 20 s emulated (0 = the startup dialog); `armwin` too. Keyboard,
+  mouse and menus need a real desktop: ask the user.
+- Use `_DEFAULT_SOURCE`, not `_GNU_SOURCE`: with glibc 2.38+ the latter pulls in
+  `__isoc23_strtol` and the binaries then refuse older distributions. Now they
+  need glibc 2.34 (`objdump -T archie | grep GLIBC_`) and the system SDL2.
 
 **Test from the command line before handing anything over**; don't make the user
 type long test lines. The tools for that:

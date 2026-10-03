@@ -7,7 +7,8 @@ lessons learned that are not obvious from the code.
 ## Layout
 
 - `src/cpu` ARMv2a core (26-bit PC+PSR, banks, exceptions, S/N/I cycles, 3-stage
-  prefetch pipeline), `src/core` bus, `src/hle` + `src/riscos` RISC OS in HLE
+  prefetch pipeline) and, separately, the ARMv3 core for the Risc PC (`arm6.c`:
+  ARM610/710, 26/32-bit modes, CP15 and MMU inside the core), `src/core` bus, `src/hle` + `src/riscos` RISC OS in HLE
   (kernel SWIs, VDU driver, HostFS, module loader), `src/machine` the BBC BASIC
   machine, `src/archie` the low-level Archimedes (MEMC1a, IOC, VIDC1a, keyboard,
   CMOS, WD1772), `src/frontend` Win32 and console front ends.
@@ -27,8 +28,9 @@ Windows: MSVC 2022 through CMake (no gcc). macOS: see below.
 
 ```
 cmake --build build --config Release
-build\Release\test_arm2.exe   (also test_basic, test_memc, test_vidc, test_kbd, test_cmos, test_fdc, test_keys_es)
-.venv\Scripts\python tests\diff_unicorn.py     # ALU oracle against Unicorn
+build\Release\test_arm2.exe   (also test_arm6, test_basic, test_memc, test_vidc, test_kbd, test_cmos, test_fdc, test_keys_es ROM)
+.venv\Scripts\python tests\diff_unicorn.py        # ARM2 ALU oracle against Unicorn
+.venv\Scripts\python tests\diff_unicorn_arm6.py   # ARMv3 core, 32-bit modes, against Unicorn (SA1100)
 ```
 
 The linker fails if `archie.exe` / `armwin.exe` is still running: close it first.
@@ -118,6 +120,10 @@ type long test lines. The tools for that:
   offset; *Cat/*Ex/*Info come through Func 14/15; "not found" is Open R1 = 0 or
   File 5 R0 = 0 (also for names with wildcards, never an error); errors are V set
   with R0 -> block. R12 on entry is the value passed in R3 to OS_FSControl 12.
+- Unicorn as an oracle: it does not rotate unaligned LDRs (ARM2/ARM6 do), it
+  reuses stale translated blocks after a mode change (call `uc.ctl_flush_tb()`
+  per case), and with `count=1` it doesn't complete exception returns (MOVS PC
+  in a privileged mode keeps the mode and only sets the flags).
 - Fixed-point kernels need exact refinement in BASIC at sphere edges; a false hit
   gives a non-unit normal and the specular power overflows ("Number too big").
 

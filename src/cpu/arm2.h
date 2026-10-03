@@ -39,17 +39,8 @@ enum {
     ARM_VEC_FIQ       = 0x1C
 };
 
-/*
- * Interfaccia verso il bus. Gli indirizzi arrivano gia' a 26 bit.
- * Se il dispositivo vuole segnalare un abort mette *abort = 1.
- */
-typedef struct ArmBus {
-    void    *ctx;
-    uint32_t (*read32) (void *ctx, uint32_t addr, int *abort);
-    uint8_t  (*read8)  (void *ctx, uint32_t addr, int *abort);
-    void     (*write32)(void *ctx, uint32_t addr, uint32_t v, int *abort);
-    void     (*write8) (void *ctx, uint32_t addr, uint8_t v, int *abort);
-} ArmBus;
+/* Interfaccia verso il bus (armbus.h). Gli indirizzi arrivano gia' a 26 bit. */
+#include "armbus.h"
 
 struct Arm2;
 

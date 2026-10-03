@@ -13,6 +13,7 @@ endif()
 # Moduli: CPU, bus, HLE di RISC OS
 add_library(armcore STATIC
     src/cpu/arm2.c
+    src/cpu/arm6.c
     src/cpu/arm2_disasm.c
     src/core/bus.c
     src/core/hostdir.c
@@ -37,8 +38,15 @@ target_link_libraries(test_arm2 armcore)
 add_executable(arm2_oracle tests/arm2_oracle.c)
 target_link_libraries(arm2_oracle armcore)
 
+# Test del core ARMv3 (ARM610/710) e il suo motore per Unicorn
+add_executable(test_arm6 tests/test_arm6.c)
+target_link_libraries(test_arm6 armcore)
+add_executable(arm6_oracle tests/arm6_oracle.c)
+target_link_libraries(arm6_oracle armcore)
+
 enable_testing()
 add_test(NAME cpu COMMAND test_arm2)
+add_test(NAME cpu_arm6 COMMAND test_arm6)
 
 # Strumenti
 add_executable(modinfo tools/modinfo.c)

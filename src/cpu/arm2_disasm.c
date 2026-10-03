@@ -78,11 +78,58 @@ static void emit_reglist(Out *o, uint32_t list)
     emit(o, "}");
 }
 
-int arm2_disasm(uint32_t i, uint32_t addr, char *out, size_t size)
+/* PSR come operando di MRS/MSR: CPSR o SPSR, con i campi scritti */
+static void emit_psr(Out *o, uint32_t i, int fields)
+{
+    emit(o, "%s", (i & (1u << 22)) ? "SPSR" : "CPSR");
+    if (!fields) return;
+    int m = (int)(i >> 16) & 15;
+    if (m == 9) { emit(o, "_all"); return; }
+    if (m == 8) { emit(o, "_flg"); return; }
+    if (m == 1) { emit(o, "_ctl"); return; }
+    emit(o, "_");
+    if (m & 8) emit(o, "f");
+    if (m & 4) emit(o, "s");
+    if (m & 2) emit(o, "x");
+    if (m & 1) emit(o, "c");
+}
+
+/* v3: istruzioni dell'ARMv3 e indirizzi a 32 bit */
+static int disasm(uint32_t i, uint32_t addr, int v3, char *out, size_t size)
 {
     Out o = { out, size, 0 };
     const char *cc = cond_names[i >> 28];
+    uint32_t amask = v3 ? 0xFFFFFFFFu : 0x03FFFFFFu;
     if (size) out[0] = 0;
+
+    if (v3 && (i & 0x0D900000u) == 0x01000000u && ((i >> 25) & 1 || (i & 0x90u) != 0x90u)) {
+        if ((i & 0x0FBF0FFFu) == 0x010F0000u) {
+            emit(&o, "MRS%s %s,", cc, reg((i >> 12) & 15));
+            emit_psr(&o, i, 0);
+            return o.len;
+        }
+        if ((i & 0x0FB0F000u) == 0x0320F000u || (i & 0x0FB0FFF0u) == 0x0120F000u) {
+            emit(&o, "MSR%s ", cc);
+            emit_psr(&o, i, 1);
+            if (i & (1u << 25)) {
+                int rot = ((i >> 8) & 15) * 2;
+                uint32_t imm = i & 0xFF;
+                imm = rot ? (imm >> rot) | (imm << (32 - rot)) : imm;
+                emit(&o, ",#");
+                emit_hex(&o, imm);
+            } else {
+                emit(&o, ",%s", reg(i & 15));
+            }
+            return o.len;
+        }
+    }
+    if (v3 && (i & 0x0F000010u) == 0x0E000010u) {
+        emit(&o, "%s%s P%d,%d,%s,C%d,C%d", (i & (1u << 20)) ? "MRC" : "MCR", cc,
+             (int)(i >> 8) & 15, (int)(i >> 21) & 7, reg((i >> 12) & 15),
+             (int)(i >> 16) & 15, (int)i & 15);
+        if ((i >> 5) & 7) emit(&o, ",%d", (int)(i >> 5) & 7);
+        return o.len;
+    }
 
     switch ((i >> 25) & 7) {
     case 0:
@@ -133,7 +180,7 @@ int arm2_disasm(uint32_t i, uint32_t addr, char *out, size_t size)
         if (!(i & (1u << 25)) && rn == 15 && p && !w) {
             /* indirizzo relativo al PC: mostriamo il bersaglio */
             uint32_t off = i & 0xFFF;
-            emit(&o, "&%X", (addr + 8 + (u ? off : (uint32_t)-(int32_t)off)) & 0x03FFFFFFu);
+            emit(&o, "&%X", (addr + 8 + (u ? off : (uint32_t)-(int32_t)off)) & amask);
             return o.len;
         }
         emit(&o, "[%s", reg(rn));
@@ -163,7 +210,7 @@ int arm2_disasm(uint32_t i, uint32_t addr, char *out, size_t size)
     }
     case 5: {
         uint32_t off = (uint32_t)((int32_t)(i << 8) >> 6);
-        emit(&o, "%s%s &%X", (i & (1u << 24)) ? "BL" : "B", cc, (addr + 8 + off) & 0x03FFFFFCu);
+        emit(&o, "%s%s &%X", (i & (1u << 24)) ? "BL" : "B", cc, (addr + 8 + off) & amask & ~3u);
         return o.len;
     }
     case 7:
@@ -177,4 +224,14 @@ int arm2_disasm(uint32_t i, uint32_t addr, char *out, size_t size)
     }
     emit(&o, "DCD &%08X", i);
     return o.len;
+}
+
+int arm2_disasm(uint32_t instr, uint32_t addr, char *out, size_t size)
+{
+    return disasm(instr, addr, 0, out, size);
+}
+
+int arm6_disasm(uint32_t instr, uint32_t addr, char *out, size_t size)
+{
+    return disasm(instr, addr, 1, out, size);
 }

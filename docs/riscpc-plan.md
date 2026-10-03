@@ -14,11 +14,13 @@ Win32/Mac, gli strumenti di test.
 |---|---|---|
 | `1. Major/ROM350` | 2 MB | RISC OS 3.50, primo Risc PC (ARM610) |
 | `1. Major/ROM360` | 4 MB | RISC OS 3.60 |
+| `1. Major/ROM370` | 4 MB | RISC OS 3.70 (StrongARM) |
+| `1. Major/ROM371` | 4 MB | RISC OS 3.71 |
 | `3. Uncommon/ROM380.ARM6ARM7` | 4 MB | 3.80 (Phoebe) per ARM6/7 |
 | `3. Uncommon/ROM380.SA` | 4 MB | 3.80 per StrongARM |
 | `2. NCOS/ROM361` | | 3.61 (NC) |
 
-RISC OS 3.7 (StrongARM) non c'e': per la fase StrongARM serve un dump.
+Per la fase StrongARM ci sono gia' la 3.70 e la 3.71.
 
 ## L'hardware (da verificare sui datasheet durante il lavoro)
 
@@ -50,18 +52,27 @@ codice copiato in questo progetto MIT.
 
 ## Struttura nel codice
 
-- Il core in `src/cpu` diventa configurabile: ARMv2a (Archimedes) o ARMv3
-  (ARM610/710), poi ARMv4. Bus a 32 bit con il segnale dei modi a 26 bit.
-- Nuova cartella `src/riscpc` (IOMD, VIDC20, 82C711, IDE, MMU di CP15 se non
-  sta nel core), con `riscpc_boot` come `archie_boot` per la diagnosi.
+- Il core ARMv3 e' un modulo a parte, `src/cpu/arm6.c` (`Arm6`), accanto
+  all'ARM2: l'Archimedes resta sul suo core gia' calibrato. CP15 e MMU
+  stanno nel core (TLB software a blocchi da 1 KB); sul bus (`ArmBus`, ora
+  in `armbus.h`) arrivano solo indirizzi fisici a 32 bit. Poi ARMv4.
+- Nuova cartella `src/riscpc` (IOMD, VIDC20, 82C711, IDE), con `riscpc_boot` come `archie_boot` per la diagnosi.
 - Frontend: una scelta della macchina (Archimedes / Risc PC) o un eseguibile
   separato; da decidere quando si arriva al desktop.
 
 ## Passi
 
-1. **Core ARMv3**: modi a 32 bit, CPSR/SPSR, MRS/MSR, eccezioni nei due
-   modi, CP15 e MMU. Test unitari e confronto con Unicorn nei modi a 32 bit
-   (ALU, load/store, eccezioni); i test dell'ARM2 devono restare verdi.
+1. **Core ARMv3** (fatto): modi a 26 e 32 bit, CPSR/SPSR, MRS/MSR,
+   eccezioni nelle due configurazioni (bit P), address exception solo coi
+   dati a 26 bit (bit D), CP15 (ID, controllo, TTB, domini, FSR/FAR, flush)
+   e MMU (sezioni, pagine da 64 e 4 KB con sottopagine, domini, AP con S e
+   R, allineamento). `tests/test_arm6.c` (116 controlli) e
+   `tests/diff_unicorn_arm6.py` (Unicorn come SA1100, 0 differenze su
+   300 000 istruzioni nei sei modi a 32 bit). Scelte da verificare sulla
+   ROM: il modello degli abort (ARM610 base ripristinata su LDR/STR, ARM710
+   con L aggiornata; LDM/STM sempre aggiornata), TSTP & co. nei modi a 32
+   bit (copiano l'SPSR), STR/STM di PC = +12. La cache non e' emulata (e'
+   write-through: conta solo per i tempi).
 2. **Fino allo schermo di avvio**: mappa della memoria, IOMD (interrupt,
    timer, memoria), VIDC20 essenziale. `riscpc_boot` con il rapporto del POST
    e la PNG dello schermo, come per l'Archimedes; traccia degli accessi I/O

@@ -140,6 +140,27 @@ assembler (`PROCassemble`), about 1.6× faster than pure BASIC on an 8 MHz ARM2.
 |---|---|
 | ![MODE 28](docs/raytracer-mode28.png) | ![MODE 49](docs/raytracer-mode49.png) |
 
+### The Juggler
+
+`Juggler` (in `disc`, and `riscos/!Juggler` for the RISC OS desktop) renders
+**Eric Graham's 1987 Juggler** with his own algorithm: `rt1.c` translated to
+BBC BASIC, or the whole `raytrace()` in fixed-point ARM assembler, reading his
+original scene files (`robot.dat`, `ele.dat`, `dragon.dat`). The BASIC engine
+gives the same picture as the reference; the assembler one differs in about 2%
+of the pixels, mostly at the far horizon and at the edges of the mirrors. On an
+8 MHz ARM2 a full 320x200 frame takes about 2.5 minutes of ray tracing (the
+Amiga took about an hour); 256-colour modes use a palette chosen for the picture
+(the 16 VIDC1 registers hold the low bits) and Floyd-Steinberg dithering.
+
+Scene `anim` renders a 24-frame juggling animation and `play` plays it. The
+original animation's scene files are lost: the ball timings and paths are
+measured from the original frames, the body motion is a reconstruction.
+
+Ray tracer and scenes by **Eric Graham**, 1987, who released them in 2026:
+"anyone can do what they want with the code, so long as I get a mention!".
+Source: github.com/AlphaPixel/Eric-Graham-1987-Juggler-Raytracer-1.0.
+`tools/juggler_ref.c` is the reference on the PC used to check the renders.
+
 ## Archimedes machine (original ROMs)
 
 `archie.exe` is a low-level emulation of an Archimedes A3000/A310: the CPU runs
@@ -244,12 +265,15 @@ when the window opens.
 
 1. Swappable ROMs for the BASIC machine (`--rom`): BASIC today, then Forth and
    other languages.
-2. Hard disc and CD-ROM images.
-3. Later: 32-bit ARMv3/v4 CPU and Risc PC hardware for RISC OS 5.
+2. Risc PC for RISC OS 3.5-3.7: ARMv3 CPU (ARM610/ARM710) with MMU, IOMD,
+   VIDC20, PC-style floppy and IDE hard disc images (plan in
+   `docs/riscpc-plan.md`).
+3. CD-ROM images; later StrongARM (ARMv4) and RISC OS 5.
 
 ## Licence
 
 The emulator code is released under the MIT licence (see `LICENSE`). The
+Juggler ray tracer and its scene files are Eric Graham's (see above). The
 components in `third_party/riscos` (the BBC BASIC V module) and the system font
 in `src/riscos/font.h` come from RISC OS Open and remain under the Apache 2.0
 licence. RISC OS 3.x ROMs and floppy images are not included and must not be

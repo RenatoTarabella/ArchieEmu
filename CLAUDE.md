@@ -130,6 +130,7 @@ before `!Genesis` starts).
 
 ## Ideas for later
 
-Swappable ROMs for the BASIC machine (Forth, ...), hard disc and CD-ROM images
+Risc PC for RISC OS 3.5 (plan in `docs/riscpc-plan.md`), swappable ROMs for the
+BASIC machine (Forth, ...), hard disc and CD-ROM images
 (two `.iso` files are waiting in `ADF/`), ARMv3/v4 and Risc PC hardware for
 RISC OS 5.

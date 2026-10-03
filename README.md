@@ -35,6 +35,8 @@ through interfaces. It runs in two flavours:
 - [**ArchieEmu-BASIC-v1.3-linux-x64.tar.gz**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.3/ArchieEmu-BASIC-v1.3-linux-x64.tar.gz)
   and [**ArchieEmu-Archimedes-v1.3-linux-x64.tar.gz**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.3/ArchieEmu-Archimedes-v1.3-linux-x64.tar.gz):
   the same two machines, portable; unpack and run `./armwin` or `./archie`.
+  New and not yet tested on a Linux desktop (only built and run without a
+  screen): please report how it goes.
 
 All releases: [Releases page](https://github.com/RenatoTarabella/ArchieEmu/releases).
 

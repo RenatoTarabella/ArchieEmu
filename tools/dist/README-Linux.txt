@@ -8,6 +8,10 @@ Needs SDL2, which most desktops already have. If the program does not start:
 Built for glibc 2.34 or later (Ubuntu 22.04, Debian 12, Fedora 35 and newer).
 Unpack anywhere and run ./armwin or ./archie from the folder.
 
+This is the first Linux version and it has not been tested on a Linux desktop
+yet (only built and run without a screen). Please report problems with the
+keyboard, the mouse, the menus or the file chooser on GitHub.
+
 ArchieEmu BASIC (./armwin)
 --------------------------
 The original BBC BASIC V running on an emulated 8 MHz ARM2. No ROM needed.

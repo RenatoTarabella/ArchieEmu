@@ -91,7 +91,8 @@ type long test lines. The tools for that:
   contain backslashes or `%`.
 - Archimedes: `archie_boot --rom "roms/1. Major/ROM311" --ms 60000 --floppy a.adf
   --floppy2 b.adf --png out.png --keys "{F12}run :0.!App{ENTER}"`. Key tokens:
-  `{F12}` `{ENTER}` `{VKxx}` `{SVKxx}` `{ALTnnn}` `{RESET}` `{WAIT}` (5 s); typing
+  `{F12}` `{ENTER}` `{VKxx}` `{SVKxx}` `{ALTnnn}` `{RESET}` `{WAIT}` (5 s), and to
+  hold keys (games) `{DOWNxx}` / `{UPxx}` with `{Tn}` (n steps of 40 ms); typing
   starts at 15 s of emulated time. Other options: `--ram --cmos --trace-vectors
   --hist --trace-abort --wav`. It prints the POST report.
 - Risc PC: `riscpc_boot [--rom "roms/1. Major/ROM350"] --ms 8000 --png out.png

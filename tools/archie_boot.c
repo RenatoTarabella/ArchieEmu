@@ -75,6 +75,23 @@ static void parse_keys(const char *s)
             s += 6;
         }
         else if (!strncmp(s, "{ENTER}", 7)) { push_vk(VK_RETURN_, 0); s += 7; }
+        else if (!strncmp(s, "{DOWN", 5) || !strncmp(s, "{UP", 3)) {
+            /* {DOWNxx} / {UPxx}: tasto di Windows (esadecimale) tenuto o lasciato */
+            int down = s[1] == 'D';
+            int vk = (int)strtol(s + (down ? 5 : 3), NULL, 16);
+            /* frecce, Home, Fine...: i tasti del gruppo esteso, non il tastierino */
+            int c = kbd_code_from_vk(vk, vk >= 0x21 && vk <= 0x2E);
+            if (c >= 0 && key_count < 4090) key_steps[key_count++] = (KeyStep){ c, down };
+            while (*s && *s != '}') s++;
+            if (*s) s++;
+        }
+        else if (!strncmp(s, "{T", 2) && s[2] >= '0' && s[2] <= '9') {
+            /* {Tn}: n passi da 40 ms senza tasti (per tenere premuto) */
+            int n = atoi(s + 2);
+            for (int w = 0; w < n && key_count < 4090; w++) key_steps[key_count++] = (KeyStep){ -1, 0 };
+            while (*s && *s != '}') s++;
+            if (*s) s++;
+        }
         else if (!strncmp(s, "{ALT", 4)) {
             /* {ALTnnn}: Alt tenuto e codice decimale sul tastierino */
             int alt = kbd_code_from_vk(0x12, 0);

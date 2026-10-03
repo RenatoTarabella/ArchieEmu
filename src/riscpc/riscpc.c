@@ -15,6 +15,8 @@ ArcTime riscpc_now(const RiscPc *m)
     return m->now + (((m->cpu.cycles - m->cycle_base) * m->units_per_cycle_q16) >> 16);
 }
 
+static void build_ulaw(void);
+
 static void update_speed(RiscPc *m)
 {
     m->now = riscpc_now(m);
@@ -310,6 +312,8 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
     m->ram_size = mb << 20;
     m->vram_size = (cfg->vram_mb <= 2 ? cfg->vram_mb : 1) << 20;
     m->ram = calloc(1, m->ram_size);
+    m->audio = calloc(RISCPC_AUDIO_FRAMES * 2, sizeof(int16_t));
+    build_ulaw();
     m->vram = m->vram_size ? calloc(1, m->vram_size) : NULL;
 
     uint32_t n = 0;
@@ -347,6 +351,7 @@ void riscpc_destroy(RiscPc *m)
     free(m->rom);
     free(m->ram);
     free(m->vram);
+    free(m->audio);
     memset(m, 0, sizeof *m);
 }
 
@@ -362,28 +367,116 @@ static ArcTime sound_block(const RiscPc *m)
     return ARC_US(16 * ((m->vidc.sound_freq & 0xFF) + 2));
 }
 
+/* Il VIDC20 suona i byte in formato logaritmico come il VIDC1 (segno nel
+   bit 0, "chord" nei bit 7-5, "point" nei bit 4-1), uno ogni SFR + 2 us,
+   girando sugli 8 canali stereo (il canale e' l'indirizzo del byte & 7). */
+static int16_t ulaw[256];
+#define OUT_PERIOD (ARC_HZ / RISCPC_AUDIO_HZ)       /* 500 unita' */
+#define OUT_GAIN   2.0
+
+static void build_ulaw(void)
+{
+    for (int raw = 0; raw < 256; raw++) {
+        int chord = raw >> 5, point = (raw & 0x1E) >> 1;
+        int v = ((16 + point) << chord) - 16;
+        ulaw[raw] = (int16_t)((raw & 1) ? -v * 8 : v * 8);
+    }
+}
+
+static void emit_sample(RiscPc *m)
+{
+    double l = m->acc_l / OUT_PERIOD * OUT_GAIN, r = m->acc_r / OUT_PERIOD * OUT_GAIN;
+    l = l > 32767 ? 32767 : l < -32768 ? -32768 : l;
+    r = r > 32767 ? 32767 : r < -32768 ? -32768 : r;
+    uint32_t i = m->audio_w % RISCPC_AUDIO_FRAMES;
+    m->audio[2 * i] = (int16_t)l;
+    m->audio[2 * i + 1] = (int16_t)r;
+    m->audio_w++;
+    if (m->audio_w - m->audio_r > RISCPC_AUDIO_FRAMES) m->audio_r = m->audio_w - RISCPC_AUDIO_FRAMES;
+    m->acc_l = m->acc_r = 0;
+}
+
+/* aggiunge il valore (l, r) per l'intervallo [t0, t1) all'uscita a 48 kHz */
+static void mix(RiscPc *m, ArcTime t0, ArcTime t1, double l, double r)
+{
+    while (t0 < t1) {
+        ArcTime end = m->out_t + OUT_PERIOD;
+        ArcTime seg = t1 < end ? t1 : end;
+        double w = (double)(seg - t0);
+        m->acc_l += l * w;
+        m->acc_r += r * w;
+        t0 = seg;
+        if (seg == end) { emit_sample(m); m->out_t = end; }
+    }
+}
+
+uint32_t riscpc_audio_read(RiscPc *m, int16_t *out, uint32_t max)
+{
+    uint32_t n = 0;
+    while (n < max && m->audio_r != m->audio_w) {
+        uint32_t i = m->audio_r % RISCPC_AUDIO_FRAMES;
+        out[2 * n] = m->audio[2 * i];
+        out[2 * n + 1] = m->audio[2 * i + 1];
+        m->audio_r++;
+        n++;
+    }
+    return n;
+}
+
 static void sound_update(RiscPc *m, ArcTime now)
 {
-    if (!iomd_sound_active(&m->iomd)) { m->snd_next = now + sound_block(m); return; }
+    static const float left[8] = { 9, 18, 15, 12, 9, 6, 3, 0 };   /* su 18, come sul VIDC1 */
+    ArcTime period = ARC_US((m->vidc.sound_freq & 0xFF) + 2);
+    if (!iomd_sound_active(&m->iomd)) {
+        /* silenzio, senza rincorrere le pause lunghe */
+        if (m->audio) {
+            if (m->out_t + OUT_PERIOD * 4 < now) m->out_t = now - OUT_PERIOD * 4;
+            mix(m, m->out_t, now, 0, 0);
+        }
+        m->snd_next = now + sound_block(m);
+        return;
+    }
+    if (m->snd_next + ARC_MS(100) < now) m->snd_next = now - ARC_MS(100);
+    if (m->out_t + ARC_MS(100) < m->snd_next) m->out_t = m->snd_next;
     while (m->snd_next <= now) {
         uint32_t addr;
         if (!iomd_sound_next(&m->iomd, &addr)) { m->snd_next = now + sound_block(m); break; }
+        const uint8_t *p = riscpc_phys(m, addr, 16);
+        ArcTime t = m->snd_next;
+        for (int k = 0; k < 16; k++, t += period) {
+            if (!m->audio) continue;
+            int ch = (int)((addr + (uint32_t)k) & 7);
+            double v = p ? ulaw[p[k]] : 0, pl = left[m->vidc.stereo[ch] & 7] / 18.0;
+            mix(m, t, t + period, v * pl, v * (1.0 - pl));
+        }
         m->snd_next += sound_block(m);
     }
 }
 
-/* per ora un frame fisso a 50 Hz con il flyback negli ultimi 2 ms */
-#define FRAME   ARC_MS(20)
-#define FLYBACK ARC_MS(18)
+/* Durata del frame e inizio del flyback (fine del display) dai registri
+   del VIDC20; prima che RISC OS li programmi, 50 Hz. */
+static void frame_times(const RiscPc *m, ArcTime *frame, ArcTime *flyback_at)
+{
+    Vidc20Timing t;
+    if (vidc20_timing(&m->vidc, &t) && t.frame_time > ARC_MS(5) && t.frame_time < ARC_MS(100)) {
+        *frame = t.frame_time;
+        *flyback_at = t.flyback_at < t.frame_time ? t.flyback_at : t.frame_time - ARC_US(500);
+    } else {
+        *frame = ARC_MS(20);
+        *flyback_at = ARC_MS(18);
+    }
+}
 
 static void video_update(RiscPc *m, ArcTime now)
 {
-    while (now >= m->frame_start + FRAME) {
-        m->frame_start += FRAME;
+    ArcTime frame, fb;
+    frame_times(m, &frame, &fb);
+    while (now >= m->frame_start + frame) {
+        m->frame_start += frame;
         m->frames++;
         if (m->flyback) { m->flyback = 0; iomd_set_flyback(&m->iomd, 0); }
     }
-    int fly = now >= m->frame_start + FLYBACK;
+    int fly = now >= m->frame_start + fb;
     if (fly != m->flyback) { m->flyback = fly; iomd_set_flyback(&m->iomd, fly); }
 }
 
@@ -409,8 +502,12 @@ void riscpc_run(RiscPc *m, ArcTime duration)
 
         ArcTime next = target;
         ArcTime e = iomd_next_event(&m->iomd, now);  if (e < next) next = e;
-        e = m->flyback ? m->frame_start + FRAME : m->frame_start + FLYBACK;
-        if (e < next) next = e;
+        {
+            ArcTime frame, fb;
+            frame_times(m, &frame, &fb);
+            e = m->flyback ? m->frame_start + frame : m->frame_start + fb;
+            if (e < next) next = e;
+        }
         e = fdc82077_next_event(&m->sio.fdc);         if (e > now && e < next) next = e;
         if (m->index_next < next) next = m->index_next;
         if (iomd_sound_active(&m->iomd) && m->snd_next < next) next = m->snd_next > now ? m->snd_next : now + 1;

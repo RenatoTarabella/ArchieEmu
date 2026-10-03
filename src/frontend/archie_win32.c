@@ -8,7 +8,7 @@
  * Senza --rom si apre la finestra iniziale (splash_win32.c) che fa scegliere
  * macchina, ROM, processore e memoria. Con --rom la macchina si deduce dal
  * nome della ROM (ROM350 e successive: Risc PC). Il Risc PC per ora non ha
- * disco fisso, HostFS ne' suono.
+ * HostFS.
  *
  * HostFS: la cartella "HostFS" accanto all'eseguibile (creata se manca)
  * compare in RISC OS come disco, con l'icona sulla barra.
@@ -98,11 +98,13 @@ static void audio_close(void)
 }
 
 /* prende i campioni prodotti dalla macchina e li manda alla scheda audio */
-static void audio_pump(Archie *a)
+static uint32_t machine_audio(int16_t *out, uint32_t max);
+
+static void audio_pump(void)
 {
     int16_t tmp[AUDIO_FRAMES * 2];
     uint32_t got;
-    while ((got = archie_audio_read(a, tmp, AUDIO_FRAMES)) > 0) {
+    while ((got = machine_audio(tmp, AUDIO_FRAMES)) > 0) {
         uint32_t room = (uint32_t)(sizeof audio.pending / sizeof audio.pending[0]) / 2 - audio.npending;
         if (got > room) got = room;                     /* troppo indietro: si scarta */
         memcpy(audio.pending + audio.npending * 2, tmp, got * 4);
@@ -284,6 +286,12 @@ static void sync_floppy_names(void)
     }
 }
 
+/* campioni prodotti dalla macchina (48 kHz stereo per tutte e due) */
+static uint32_t machine_audio(int16_t *out, uint32_t max)
+{
+    return app.rpc ? riscpc_audio_read(&app.r, out, max) : archie_audio_read(&app.a, out, max);
+}
+
 /* code: tasto dell'Archimedes (&70 Select, &71 Menu, &72 Adjust) */
 static void mouse_button(int code, int down)
 {
@@ -438,8 +446,8 @@ static HMENU build_menu(void)
         AppendMenuA(disc, MF_STRING, CMD_HD_REMOVE, "Remove hard disc");
     }
     AppendMenuA(mach, MF_STRING, CMD_TURBO, "Turbo");
-    if (!app.rpc) {                                 /* il Risc PC non ha ancora il suono */
-        AppendMenuA(mach, MF_STRING, CMD_SOUND, "Sound");
+    AppendMenuA(mach, MF_STRING, CMD_SOUND, "Sound");
+    if (!app.rpc) {
         AppendMenuA(mach, MF_SEPARATOR, 0, NULL);
         AppendMenuA(mach, MF_STRING, CMD_RAM1, "RAM 1 MB (A3000)");
         AppendMenuA(mach, MF_STRING, CMD_RAM2, "RAM 2 MB");
@@ -786,7 +794,7 @@ int main(int argc, char **argv)
     ShowWindow(app.hwnd, SW_SHOW);
 
     timeBeginPeriod(1);
-    if (!app.rpc) audio_open();
+    audio_open();
     double next = now_s();
     MSG msg;
     int running = 1;
@@ -799,12 +807,9 @@ int main(int argc, char **argv)
         if (!running) break;
 
         keys_tick(&keys, GetTickCount());
-        if (app.rpc) {
-            riscpc_run(&app.r, ARC_MS(1000 / FRAME_HZ));
-        } else {
-            archie_run(&app.a, ARC_MS(1000 / FRAME_HZ));
-            audio_pump(&app.a);
-        }
+        if (app.rpc) riscpc_run(&app.r, ARC_MS(1000 / FRAME_HZ));
+        else         archie_run(&app.a, ARC_MS(1000 / FRAME_HZ));
+        audio_pump();
         sync_floppy_names();
         HDC dc = GetDC(app.hwnd);
         present(dc);

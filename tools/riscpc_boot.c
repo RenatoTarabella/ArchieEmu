@@ -5,7 +5,7 @@
  * stata la CPU e salva lo schermo in PNG.
  *
  *   riscpc_boot --rom ROM350 [--ms 3000] [--png schermo.png] [--ram 16] [--vram 1]
- *               [--floppy a.adf] [--floppy2 b.adf] [--hd disco.hdf] [--blank] [--create-hd disco.hdf MB]
+ *               [--floppy a.adf] [--floppy2 b.adf] [--hd disco.hdf] [--blank] [--wav suono.wav] [--create-hd disco.hdf MB]
  *               [--keys "testo{ENTER}"] [--keys-at ms]   (vedi riscpc_keys.h; da 10 s)
  *               [--arm710] [--trace-io] [--trace-vectors] [--hist] [--trace N] [--trace-at istr]
  *               [--trace-modes] [--watch-low] [--break pc] [--watch-io lo hi] [--ring N]   (le ultime N istruzioni prima del primo abort o undef)
@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "riscpc/riscpc.h"
 #include "riscpc/hdformat.h"
 #include "cpu/arm2_disasm.h"
@@ -168,6 +169,7 @@ int main(int argc, char **argv)
     uint32_t m_watch_lo = 0, m_watch_hi = 0;
     const char *floppy[2] = { NULL, NULL };
     const char *hd = NULL;
+    const char *wav = NULL;
     int blank = 0;
     const char *png = NULL;
     double ms = 3000, keys_at = 10000;
@@ -199,6 +201,7 @@ int main(int argc, char **argv)
         }
         else if (!strcmp(a, "--keys") && v)  { parse_keys(v); i++; }
         else if (!strcmp(a, "--keys-at") && v) { keys_at = atof(v); i++; }
+        else if (!strcmp(a, "--wav") && v)     { wav = v; i++; }
         else if (!strcmp(a, "--watch-low")) watch_low = 1;
         else if (!strcmp(a, "--watch-io") && i + 2 < argc) {
             m_watch_lo = (uint32_t)strtoul(argv[i + 1], NULL, 16);
@@ -231,8 +234,25 @@ int main(int argc, char **argv)
     m.cpu.exception_hook = exc_hook;
     if (hist || trace_left || ring_size || trace_modes || watch_low || break_count) m.cpu.trace_hook = trace_hook;
 
-    if (key_count) run_with_keys(&m, (ArcTime)(ms * 24000.0), (ArcTime)(keys_at * 24000.0));
-    else           riscpc_run(&m, (ArcTime)(ms * 24000.0));
+    if (wav) {
+        wav_file = fopen(wav, "wb");
+        if (wav_file) { static const uint8_t zero[44] = { 0 }; fwrite(zero, 1, 44, wav_file); }
+    }
+    run_with_keys(&m, (ArcTime)(ms * 24000.0), (ArcTime)(keys_at * 24000.0));
+    if (wav_file) {
+        /* intestazione WAV: PCM 16 bit stereo */
+        uint32_t data = wav_frames * 4, rate = RISCPC_AUDIO_HZ, bytes_s = rate * 4, riff = data + 36;
+        uint8_t h[44] = { 'R','I','F','F', 0,0,0,0, 'W','A','V','E', 'f','m','t',' ', 16,0,0,0, 1,0, 2,0 };
+        memcpy(h + 4, &riff, 4);
+        memcpy(h + 24, &rate, 4);
+        memcpy(h + 28, &bytes_s, 4);
+        h[32] = 4; h[34] = 16;
+        memcpy(h + 36, "data", 4);
+        memcpy(h + 40, &data, 4);
+        fseek(wav_file, 0, SEEK_SET);
+        fwrite(h, 1, 44, wav_file);
+        fclose(wav_file);
+    }
 
     Arm6 *c = &m.cpu;
     printf("ROM %s, %u KB, CPU %s a %.0f MHz, %u MB di DRAM, %u KB di VRAM\n", cfg.rom_path, m.rom_size >> 10,
@@ -249,11 +269,23 @@ int main(int argc, char **argv)
     printf("IOMD: IRQA %02X/%02X  IRQB %02X/%02X  FIQ %02X/%02X  DMA %02X/%02X  timer0 %u  VIDINIT %08X VIDSTART %08X VIDEND %08X VIDCR %X\n",
            m.iomd.irqa, m.iomd.irqa_mask, m.iomd.irqb, m.iomd.irqb_mask, m.iomd.fiq, m.iomd.fiq_mask,
            m.iomd.dma_irq, m.iomd.dma_mask, m.iomd.timer[0].latch, m.iomd.vidinit, m.iomd.vidstart, m.iomd.vidend, m.iomd.vidcr);
+    if (wav_frames)
+        printf("audio: %u campioni (%.1f s), picco %.0f, RMS %.0f\n", wav_frames,
+               wav_frames / (double)RISCPC_AUDIO_HZ, wav_peak, sqrt(wav_energy / (2.0 * wav_frames)));
     int w, h;
     vidc20_size(&m.vidc, &w, &h);
     printf("VIDC20: %dx%d, %d bpp, controllo %06X  HDSR %u VDSR %u  cursore HCSR %u VCSR %u VCER %u CURSINIT %08X\n",
            w, h, 1 << vidc20_log2bpp(&m.vidc), m.vidc.control, m.vidc.horiz[3], m.vidc.vert[3],
            m.vidc.horiz[6], m.vidc.vert[6], m.vidc.vert[7], m.iomd.cursinit);
+    printf("        orizz.");
+    for (int k = 0; k < 8; k++) printf(" %u", m.vidc.horiz[k]);
+    printf("  vert.");
+    for (int k = 0; k < 8; k++) printf(" %u", m.vidc.vert[k]);
+    printf("  FSYN %06X  esterno %06X  dati %06X  suono %06X/%06X\n",
+           m.vidc.fsyn, m.vidc.ext, m.vidc.datactl, m.vidc.sound_freq, m.vidc.sound_ctrl);
+    printf("        palette:");
+    for (int k = 0; k < 256; k += 17) printf(" %02X=%06X", k, m.vidc.palette[k]);
+    printf("\n");
 
     if (io_count) {
         printf("accessi sconosciuti (%d indirizzi):\n", io_count);

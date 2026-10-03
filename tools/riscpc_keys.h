@@ -91,6 +91,26 @@ static void parse_keys(const char *s)
     }
 }
 
+/* audio raccolto durante l'esecuzione (--wav) */
+static FILE *wav_file;
+static uint32_t wav_frames;
+static double wav_peak, wav_energy;
+
+static void drain_audio(RiscPc *m)
+{
+    int16_t buf[2 * 4096];
+    uint32_t got;
+    while ((got = riscpc_audio_read(m, buf, 4096)) > 0) {
+        for (uint32_t k = 0; k < 2 * got; k++) {
+            double v = buf[k] < 0 ? -buf[k] : buf[k];
+            if (v > wav_peak) wav_peak = v;
+            wav_energy += (double)buf[k] * buf[k];
+        }
+        if (wav_file) fwrite(buf, 4, got, wav_file);
+        wav_frames += got;
+    }
+}
+
 /* esegue la macchina per 'duration' facendo i passi a partire da 'start' */
 static void run_with_keys(RiscPc *m, ArcTime duration, ArcTime start)
 {
@@ -100,6 +120,7 @@ static void run_with_keys(RiscPc *m, ArcTime duration, ArcTime start)
         ArcTime slice = ARC_MS(40);
         if (now + slice > end) slice = end - now;
         riscpc_run(m, slice);
+        drain_audio(m);
         now = riscpc_now(m);
         if (key_next < key_count && now >= start + (ArcTime)key_next * ARC_MS(40)) {
             KeyStep *k = &key_steps[key_next++];

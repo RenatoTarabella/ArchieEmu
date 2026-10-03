@@ -34,6 +34,17 @@ void vidc20_write(Vidc20 *v, uint32_t value);
 
 /* bit per pixel (log2: 0 = 1 bpp ... 5 = 32 bpp) */
 int  vidc20_log2bpp(const Vidc20 *v);
+
+/* Tempi del video, in unita' da 24 MHz (ArcTime). Il clock dei pixel viene
+   dal sintetizzatore (FSYN: V bit 8-13, R bit 0-5): 24 MHz * (V+1)/(R+1),
+   diviso per (bit 4-2 del controllo) + 1; righe di HCR + 8 pixel, frame di
+   VCR + 2 righe; il flyback comincia alla fine del display (VDER).
+   Ritorna 0 se i registri non sono ancora programmati. */
+typedef struct Vidc20Timing {
+    double   pixel_hz;
+    uint64_t line_time, frame_time, flyback_at;
+} Vidc20Timing;
+int  vidc20_timing(const Vidc20 *v, Vidc20Timing *t);
 /* larghezza e altezza dell'area visibile, 0 se non programmata */
 void vidc20_size(const Vidc20 *v, int *w, int *h);
 

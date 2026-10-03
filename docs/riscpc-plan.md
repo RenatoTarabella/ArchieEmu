@@ -141,14 +141,22 @@ codice copiato in questo progetto MIT.
    byte a quelle di HForm a 64, 100, 128, 256 e 512 MB (a parita' di disc
    ID); per le altre dimensioni i parametri si scelgono con una regola che
    RISC OS accetta (`*CheckMap`: "Map good").
-6. **VIDC20 completo e suono**: modi alti a 16/32 bpp, cursore hardware,
-   suono; poi l'integrazione nel frontend Mac. Su Windows la finestra c'e'
-   gia' (anticipata dopo il passo 3): `archie.exe` apre una finestra
-   iniziale (`splash_win32.c`) che chiede macchina, ROM (trovate in
-   `roms/`), processore, RAM e VRAM e le ricorda in `ArchieEmu.ini`;
-   "Choose another machine..." nel menu Machine la riapre. La tastiera del
-   Risc PC usa la stessa traduzione dell'Archimedes (`archie_keys.c`) con i
-   codici PS/2 e la disposizione PC UK. Mancano floppy, HostFS e suono.
+6. **VIDC20 completo e suono** (fatto su Windows):
+   - tempi dai registri: clock dei pixel = 24 MHz * (V+1)/(R+1) del
+     sintetizzatore (FSYN), diviso per i bit 4-2 del controllo + 1; righe
+     di HCR + 8 pixel, frame di VCR + 2 righe, flyback dalla riga VDER
+     (60 Hz a 640x480, 50 nel modo 12, 56 a 800x600);
+   - 16 e 32 bpp: la palette fa da tabella per canale; a 16 bpp il rosso
+     dalla voce p & &FF, il verde da (p >> 4) & &FF, il blu da (p >> 8) &
+     &FF (ricavato dai valori che RISC OS ci scrive); a 32 bpp un byte per
+     canale. Senza un MDF RISC OS 3.5 conosce solo i modi numerati (fino a
+     8 bpp): per provare ho caricato un MDF scritto a mano (`*LoadModeFile`);
+   - a 16 e 32 bpp HDSR e' piu' avanti di 2 pixel: il cursore va corretto;
+   - suono a 8 bit logaritmico come il VIDC1 (8 canali, posizioni stereo
+     &A0-&A7, un byte ogni SFR + 2 us): `SOUND 1,-15,89,50` da' 436 Hz come
+     sull'Archimedes; `riscpc_boot --wav`; nella finestra il menu Sound.
+   Manca: il suono a 16 bit (RISC OS 3.6/3.7 con la scheda), il Mac (la
+   finestra iniziale e il Risc PC nel frontend Cocoa).
 7. **ARM710**, poi StrongARM e RISC OS 3.7 o 3.8.
 
 Ogni passo si chiude con i test e con la ROM che arriva un po' piu' avanti

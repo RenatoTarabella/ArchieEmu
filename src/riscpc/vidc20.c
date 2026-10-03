@@ -39,6 +39,25 @@ int vidc20_log2bpp(const Vidc20 *v)
     return map[(v->control >> 5) & 7];
 }
 
+int vidc20_timing(const Vidc20 *v, Vidc20Timing *t)
+{
+    double ref = 24e6;
+    int sel = (int)(v->control & 3);
+    double vco = ref;
+    if (sel == 0) {                              /* VCO del sintetizzatore */
+        int vv = (int)((v->fsyn >> 8) & 0x3F), rr = (int)(v->fsyn & 0x3F);
+        vco = ref * (vv + 1) / (rr + 1);
+    }
+    double pix = vco / (double)(((v->control >> 2) & 7) + 1);
+    uint32_t htotal = v->horiz[0] + 8, vtotal = v->vert[0] + 2;
+    if (!v->horiz[0] || !v->vert[0] || pix < 1e6) return 0;
+    t->pixel_hz = pix;
+    t->line_time = (uint64_t)(htotal * 24e6 / pix + 0.5);
+    t->frame_time = t->line_time * vtotal;
+    t->flyback_at = t->line_time * v->vert[4];
+    return 1;
+}
+
 void vidc20_size(const Vidc20 *v, int *w, int *h)
 {
     int hds = (int)v->horiz[3], hde = (int)v->horiz[4];
@@ -72,11 +91,16 @@ void vidc20_render(const Vidc20 *v, Vidc20Mem mem, void *ctx, uint32_t start,
                 uint32_t idx = (p[bit >> 3] >> (bit & 7)) & ((1u << bpp) - 1);
                 c = v->palette[idx];
             } else if (bpp == 16) {
+                /* la palette fa da tabella per canale: il rosso dalla voce
+                   p & &FF, il verde da (p >> 4) & &FF, il blu da (p >> 8) & &FF
+                   (RISC OS la riempie perche' tornino i 5 bit espansi) */
                 uint32_t px = p[2 * x] | p[2 * x + 1] << 8;
-                uint32_t r = px & 31, g = (px >> 5) & 31, b = (px >> 10) & 31;
-                c = (r << 3 | r >> 2) | (g << 3 | g >> 2) << 8 | (b << 3 | b >> 2) << 16;
+                c = (v->palette[px & 0xFF] & 0xFF) | (v->palette[(px >> 4) & 0xFF] & 0xFF00)
+                  | (v->palette[(px >> 8) & 0xFF] & 0xFF0000);
             } else {
-                c = p[4 * x] | p[4 * x + 1] << 8 | (uint32_t)p[4 * x + 2] << 16;
+                /* 32 bpp: ogni byte indicizza la palette del suo canale */
+                c = (v->palette[p[4 * x]] & 0xFF) | (v->palette[p[4 * x + 1]] & 0xFF00)
+                  | (v->palette[p[4 * x + 2]] & 0xFF0000);
             }
             /* palette: R nei bit bassi; l'uscita vuole 0x00RRGGBB */
             o[x] = (c & 0xFF) << 16 | (c & 0xFF00) | ((c >> 16) & 0xFF);
@@ -85,8 +109,10 @@ void vidc20_render(const Vidc20 *v, Vidc20Mem mem, void *ctx, uint32_t start,
 }
 
 /* Posizione del cursore rispetto all'inizio del display: VCSR conta da
-   VDSR; in orizzontale RISC OS scrive HCSR = x + HDSR - 20 (lo stesso a
-   1, 4 e 8 bpp: col puntatore contro il bordo sinistro HCSR = HDSR - 20). */
+   VDSR; in orizzontale RISC OS scrive HCSR = x + HDSR - 20 a 1, 4 e 8 bpp
+   (col puntatore contro il bordo sinistro HCSR = HDSR - 20). A 16 e 32 bpp
+   la pipeline dei dati e' piu' corta di 2 pixel e RISC OS mette HDSR piu'
+   avanti di 2, mentre HCSR non cambia: lo scarto e' 22. */
 #define CURSOR_X_DELAY 20
 int vidc20_cursor_height(const Vidc20 *v)
 {
@@ -98,7 +124,7 @@ void vidc20_draw_cursor(const Vidc20 *v, const uint8_t *data, uint32_t *out, int
 {
     int hgt = vidc20_cursor_height(v);
     if (!data || !hgt) return;
-    int x0 = (int)v->horiz[6] - (int)v->horiz[3] + CURSOR_X_DELAY;
+    int x0 = (int)v->horiz[6] - (int)v->horiz[3] + CURSOR_X_DELAY + (vidc20_log2bpp(v) >= 4 ? 2 : 0);
     int y0 = (int)v->vert[6] - (int)v->vert[3];
     for (int y = 0; y < hgt; y++) {
         int sy = y0 + y;

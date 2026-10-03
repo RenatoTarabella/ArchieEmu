@@ -63,6 +63,11 @@ typedef struct RiscPc {
     uint64_t slice_stop;         /* fine della fetta di CPU in corso (cicli) */
     ArcTime  index_next;         /* prossimo impulso di indice del floppy */
     ArcTime  snd_next;          /* prossimo blocco di 16 byte del DMA del suono */
+    /* uscita audio: campioni stereo a RISCPC_AUDIO_HZ in un anello */
+    ArcTime  out_t;              /* inizio del campione d'uscita in costruzione */
+    double   acc_l, acc_r;
+    int16_t *audio;
+    uint32_t audio_w, audio_r;
 
     ArcTime  frame_start;
     int      flyback;
@@ -85,6 +90,11 @@ ArcTime riscpc_now(const RiscPc *m);
 const uint8_t *riscpc_phys(RiscPc *m, uint32_t addr, uint32_t len);
 
 void riscpc_render(RiscPc *m, uint32_t *out, int stride, int *w, int *h);
+/* Audio: campioni stereo a 16 bit interlacciati (sinistro, destro). */
+#define RISCPC_AUDIO_HZ     48000
+#define RISCPC_AUDIO_FRAMES 65536u
+uint32_t riscpc_audio_read(RiscPc *m, int16_t *out, uint32_t max);
+
 /* colore del bordo, 0x00RRGGBB */
 uint32_t riscpc_border_rgb(const RiscPc *m);
 void riscpc_set_mhz(RiscPc *m, double mhz);

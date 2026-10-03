@@ -7,8 +7,8 @@
  *
  * Senza --rom si apre la finestra iniziale (splash_win32.c) che fa scegliere
  * macchina, ROM, processore e memoria. Con --rom la macchina si deduce dal
- * nome della ROM (ROM350 e successive: Risc PC). Il Risc PC per ora non ha
- * HostFS.
+ * nome della ROM (ROM350 e successive: Risc PC). HostFS c'e' su tutte e
+ * due le macchine.
  *
  * HostFS: la cartella "HostFS" accanto all'eseguibile (creata se manca)
  * compare in RISC OS come disco, con l'icona sulla barra.
@@ -750,6 +750,7 @@ int main(int argc, char **argv)
         rcfg.vram_mb = vram >= 0 ? (uint32_t)vram : 2;
         rcfg.arm710 = arm710;
         rcfg.mhz = mhz > 0 ? mhz : (arm710 ? 40 : 30);
+        rcfg.hostfs_dir = cfg.hostfs_dir ? cfg.hostfs_dir : hostfs_folder();
         app.mhz = rcfg.mhz;
         if (!riscpc_create(&app.r, &rcfg, err, sizeof err)) {
             MessageBoxA(NULL, err, "Risc PC", MB_ICONERROR);

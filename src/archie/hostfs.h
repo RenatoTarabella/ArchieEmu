@@ -23,17 +23,33 @@
 
 struct Memc;
 
+/* registri all'ingresso e all'uscita di una chiamata (R15 non si usa; V a parte) */
+typedef struct HostFsRegs {
+    uint32_t r[16];
+    int      v;
+} HostFsRegs;
+
+/* accesso alla memoria logica della macchina */
+typedef uint8_t (*HostFsRead8)(void *ctx, uint32_t addr);
+typedef void    (*HostFsWrite8)(void *ctx, uint32_t addr, uint8_t v);
+
 typedef struct ArcHostFS {
     char   root[512];
     void  *fp[ARC_HOSTFS_FILES];        /* FILE* aperti; l'indice + 1 e' la maniglia */
     char   path[ARC_HOSTFS_FILES][600];
-    struct Memc *memc;
+    HostFsRead8  rd8;
+    HostFsWrite8 wr8;
+    void        *mem_ctx;
     /* *HostFS_Insert: mette un'immagine dell'host nell'unita' (0 = non riconosciuta) */
     int  (*insert)(void *ctx, int drive, const char *path);
     void  *insert_ctx;
 } ArcHostFS;
 
 void arc_hostfs_init(ArcHostFS *h, const char *root, struct Memc *memc);
+/* per altre macchine (il Risc PC): la memoria con due funzioni */
+void arc_hostfs_init_mem(ArcHostFS *h, const char *root, HostFsRead8 rd, HostFsWrite8 wr, void *ctx);
+/* come arc_hostfs_entry, sui registri gia' copiati */
+void arc_hostfs_call(ArcHostFS *h, HostFsRegs *regs, int entry);
 void arc_hostfs_close_all(ArcHostFS *h);
 /* esegue l'ingresso 'entry' (0 Open, 1 GetBytes, 2 PutBytes, 3 Args, 4 Close, 5 File, 6 Func,
    7 *HostFS_Insert con R0 -> nome del file) */

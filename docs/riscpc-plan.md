@@ -161,6 +161,9 @@ codice copiato in questo progetto MIT.
      "Choose Another Machine..."; il riconoscimento delle ROM e' comune
      (`romlist.c`).
    Manca: il suono a 16 bit (RISC OS 3.6/3.7 con la scheda).
+   HostFS anche sul Risc PC: la stessa scheda dell'Archimedes nello slot 0
+   (&033C0000, un byte per parola), la SWI intercettata dal core ARMv3, la
+   memoria logica attraverso la MMU (`arc_hostfs_init_mem`, `HostFsRegs`).
 7. **ARM710**, poi StrongARM e RISC OS 3.7 o 3.8.
 
 Ogni passo si chiude con i test e con la ROM che arriva un po' piu' avanti

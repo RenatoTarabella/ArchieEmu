@@ -31,23 +31,14 @@
 #define ATTR_FILE   0x13u             /* WR/R */
 #define ERR(code)   (0x10000u | 0x9900u | (code))
 
-static void arc_hostfs_dispatch(ArcHostFS *h, Arm2 *cpu, int entry);
+static void arc_hostfs_dispatch(ArcHostFS *h, HostFsRegs *cpu, int entry);
 
 /* ------------------------------------------------------------------ */
 /* memoria e registri                                                 */
 /* ------------------------------------------------------------------ */
 
-static uint8_t rd8(ArcHostFS *h, uint32_t a)
-{
-    int abort = 0;
-    return memc_read8(h->memc, a, &abort);
-}
-
-static void wr8(ArcHostFS *h, uint32_t a, uint8_t v)
-{
-    int abort = 0;
-    memc_write8(h->memc, a, v, &abort);
-}
+static uint8_t rd8(ArcHostFS *h, uint32_t a) { return h->rd8(h->mem_ctx, a); }
+static void wr8(ArcHostFS *h, uint32_t a, uint8_t v) { h->wr8(h->mem_ctx, a, v); }
 
 static void wr32(ArcHostFS *h, uint32_t a, uint32_t v)
 {
@@ -69,9 +60,9 @@ static uint32_t write_str(ArcHostFS *h, uint32_t a, const char *s)
     return n;
 }
 
-static void ok(Arm2 *cpu) { cpu->r[15] &= ~ARM_V; }
+static void ok(HostFsRegs *cpu) { cpu->v = 0; }
 
-static void error(ArcHostFS *h, Arm2 *cpu, uint32_t num, const char *msg)
+static void error(ArcHostFS *h, HostFsRegs *cpu, uint32_t num, const char *msg)
 {
     uint32_t blk = R(12) + ARC_HOSTFS_WS_ERROR;
     wr32(h, blk, num);
@@ -79,7 +70,7 @@ static void error(ArcHostFS *h, Arm2 *cpu, uint32_t num, const char *msg)
     snprintf(s, sizeof s, "%s", msg);
     write_str(h, blk + 4, s);
     R(0) = blk;
-    cpu->r[15] |= ARM_V;
+    cpu->v = 1;
 }
 
 /* ------------------------------------------------------------------ */
@@ -87,7 +78,7 @@ static void error(ArcHostFS *h, Arm2 *cpu, uint32_t num, const char *msg)
 /* ------------------------------------------------------------------ */
 
 /* "$.dir.file" -> percorso base sull'host */
-static int host_base(ArcHostFS *h, Arm2 *cpu, uint32_t name_addr, char *out, size_t size)
+static int host_base(ArcHostFS *h, HostFsRegs *cpu, uint32_t name_addr, char *out, size_t size)
 {
     char ro[256];
     read_str(h, name_addr, ro, sizeof ro);
@@ -100,7 +91,7 @@ static int host_base(ArcHostFS *h, Arm2 *cpu, uint32_t name_addr, char *out, siz
 
 /* Un nome che l'host non puo' rappresentare (jolly compresi: *Copy chiede
    "$.dir.*") non esiste: base resta vuota e si da' errore solo creandolo */
-static int find(ArcHostFS *h, Arm2 *cpu, uint32_t name_addr, char *base, size_t bsize, HostObject *o)
+static int find(ArcHostFS *h, HostFsRegs *cpu, uint32_t name_addr, char *base, size_t bsize, HostObject *o)
 {
     char ro[256];
     read_str(h, name_addr, ro, sizeof ro);
@@ -113,14 +104,14 @@ static int find(ArcHostFS *h, Arm2 *cpu, uint32_t name_addr, char *base, size_t 
     return hostdir_find(base, o);
 }
 
-static int bad_name(ArcHostFS *h, Arm2 *cpu, const char *base)
+static int bad_name(ArcHostFS *h, HostFsRegs *cpu, const char *base)
 {
     if (base[0]) return 0;
     error(h, cpu, ERR(0xCC), "Bad name");
     return 1;
 }
 
-static uint32_t leaf_name(ArcHostFS *h, Arm2 *cpu, const char *path)
+static uint32_t leaf_name(ArcHostFS *h, HostFsRegs *cpu, const char *path)
 {
     const char *s = strrchr(path, '/');
     char ro[256];
@@ -130,7 +121,7 @@ static uint32_t leaf_name(ArcHostFS *h, Arm2 *cpu, const char *path)
     return a;
 }
 
-static void info_regs(Arm2 *cpu, const HostObject *o)
+static void info_regs(HostFsRegs *cpu, const HostObject *o)
 {
     uint32_t load, exec;
     hostdir_load_exec(o, &load, &exec);
@@ -168,7 +159,7 @@ static long file_len(FILE *fp)
     return n;
 }
 
-static void fs_open(ArcHostFS *h, Arm2 *cpu)
+static void fs_open(ArcHostFS *h, HostFsRegs *cpu)
 {
     uint32_t reason = R(0);
     char base[600];
@@ -201,7 +192,7 @@ static void fs_open(ArcHostFS *h, Arm2 *cpu)
     ok(cpu);
 }
 
-static void fs_getbytes(ArcHostFS *h, Arm2 *cpu)
+static void fs_getbytes(ArcHostFS *h, HostFsRegs *cpu)
 {
     FILE *f = handle_fp(h, R(1));
     if (!f) { error(h, cpu, ERR(0xDE), "Channel"); return; }
@@ -219,7 +210,7 @@ static void fs_getbytes(ArcHostFS *h, Arm2 *cpu)
     ok(cpu);
 }
 
-static void fs_putbytes(ArcHostFS *h, Arm2 *cpu)
+static void fs_putbytes(ArcHostFS *h, HostFsRegs *cpu)
 {
     FILE *f = handle_fp(h, R(1));
     if (!f) { error(h, cpu, ERR(0xDE), "Channel"); return; }
@@ -236,7 +227,7 @@ static void fs_putbytes(ArcHostFS *h, Arm2 *cpu)
     ok(cpu);
 }
 
-static void fs_args(ArcHostFS *h, Arm2 *cpu)
+static void fs_args(ArcHostFS *h, HostFsRegs *cpu)
 {
     FILE *f = handle_fp(h, R(1));
     if (!f) { error(h, cpu, ERR(0xDE), "Channel"); return; }
@@ -277,7 +268,7 @@ static void fs_args(ArcHostFS *h, Arm2 *cpu)
     ok(cpu);
 }
 
-static void fs_close(ArcHostFS *h, Arm2 *cpu)
+static void fs_close(ArcHostFS *h, HostFsRegs *cpu)
 {
     FILE *f = handle_fp(h, R(1));
     if (!f) { error(h, cpu, ERR(0xDE), "Channel"); return; }
@@ -306,7 +297,7 @@ static int write_block(ArcHostFS *h, const char *path, uint32_t start, uint32_t 
     return 1;
 }
 
-static void fs_file(ArcHostFS *h, Arm2 *cpu)
+static void fs_file(ArcHostFS *h, HostFsRegs *cpu)
 {
     uint32_t reason = R(0);
     char base[600], path[640];
@@ -398,7 +389,7 @@ static int add_name(const char *name, void *ctx)
 
 static int cmp_names(const void *a, const void *b) { return strcasecmp((const char *)a, (const char *)b); }
 
-static void read_dir(ArcHostFS *h, Arm2 *cpu, int reason)
+static void read_dir(ArcHostFS *h, HostFsRegs *cpu, int reason)
 {
     char dir[600];
     HostObject d;
@@ -446,7 +437,7 @@ static void read_dir(ArcHostFS *h, Arm2 *cpu, int reason)
     ok(cpu);
 }
 
-static void fs_func(ArcHostFS *h, Arm2 *cpu)
+static void fs_func(ArcHostFS *h, HostFsRegs *cpu)
 {
     switch (R(0)) {
     case 0: case 1: case 7: case 17:                   /* *Dir, *Lib, *Opt, banner */
@@ -486,13 +477,24 @@ static void fs_func(ArcHostFS *h, Arm2 *cpu)
 
 /* ------------------------------------------------------------------ */
 
-void arc_hostfs_init(ArcHostFS *h, const char *root, struct Memc *memc)
+void arc_hostfs_init_mem(ArcHostFS *h, const char *root, HostFsRead8 rd, HostFsWrite8 wr, void *ctx)
 {
     memset(h, 0, sizeof *h);
     snprintf(h->root, sizeof h->root, "%s", root);
     size_t n = strlen(h->root);
     while (n > 1 && (h->root[n - 1] == '/' || h->root[n - 1] == '\\')) h->root[--n] = 0;
-    h->memc = memc;
+    h->rd8 = rd;
+    h->wr8 = wr;
+    h->mem_ctx = ctx;
+}
+
+/* Archimedes: la memoria logica passa dal MEMC */
+static uint8_t memc_rd8(void *ctx, uint32_t a) { int ab = 0; return memc_read8((Memc *)ctx, a, &ab); }
+static void memc_wr8(void *ctx, uint32_t a, uint8_t v) { int ab = 0; memc_write8((Memc *)ctx, a, v, &ab); }
+
+void arc_hostfs_init(ArcHostFS *h, const char *root, struct Memc *memc)
+{
+    arc_hostfs_init_mem(h, root, memc_rd8, memc_wr8, memc);
 }
 
 void arc_hostfs_close_all(ArcHostFS *h)
@@ -501,7 +503,18 @@ void arc_hostfs_close_all(ArcHostFS *h)
         if (h->fp[i]) { fclose((FILE *)h->fp[i]); h->fp[i] = NULL; }
 }
 
-void arc_hostfs_entry(ArcHostFS *h, Arm2 *cpu, int entry)
+void arc_hostfs_entry(ArcHostFS *h, Arm2 *arm, int entry)
+{
+    /* i registri dell'ARM2; V torna nel PSR dentro R15 */
+    HostFsRegs regs;
+    memcpy(regs.r, arm->r, sizeof regs.r);
+    regs.v = (arm->r[15] & ARM_V) != 0;
+    arc_hostfs_call(h, &regs, entry);
+    memcpy(arm->r, regs.r, 15 * sizeof(uint32_t));
+    arm->r[15] = regs.v ? arm->r[15] | ARM_V : arm->r[15] & ~ARM_V;
+}
+
+void arc_hostfs_call(ArcHostFS *h, HostFsRegs *cpu, int entry)
 {
     /* ARCHIE_HOSTFS_TRACE=1: ogni chiamata di FileSwitch su stderr (debug) */
     static int trace = -1;
@@ -515,12 +528,12 @@ void arc_hostfs_entry(ArcHostFS *h, Arm2 *cpu, int entry)
     arc_hostfs_dispatch(h, cpu, entry);
     if (trace)
         fprintf(stderr, "hostfs %d  out R0=%08X R1=%08X R2=%08X R3=%08X R4=%08X R5=%08X%s\n",
-                entry, R(0), R(1), R(2), R(3), R(4), R(5), (cpu->r[15] & ARM_V) ? "  ERRORE" : "");
+                entry, R(0), R(1), R(2), R(3), R(4), R(5), cpu->v ? "  ERRORE" : "");
 }
 
 /* *HostFS_Insert: il nome arriva come lo da' il Filer ("HostFS:$.dir.Gioco/hfe",
    anche "HostFS::HostFS.$..."), si cerca il file e lo si mette nell'unita' 0 */
-static void insert_disc(ArcHostFS *h, Arm2 *cpu)
+static void insert_disc(ArcHostFS *h, HostFsRegs *cpu)
 {
     char ro[256], base[600];
     read_str(h, R(0), ro, sizeof ro);
@@ -543,7 +556,7 @@ static void insert_disc(ArcHostFS *h, Arm2 *cpu)
     ok(cpu);
 }
 
-static void arc_hostfs_dispatch(ArcHostFS *h, Arm2 *cpu, int entry)
+static void arc_hostfs_dispatch(ArcHostFS *h, HostFsRegs *cpu, int entry)
 {
     switch (entry) {
     case 7: insert_disc(h, cpu); break;

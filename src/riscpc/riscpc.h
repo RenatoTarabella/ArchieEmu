@@ -10,7 +10,8 @@
  *   &03012000  DACK del floppy (il dato del DMA); &0302A000 lo stesso con TC
  *   &03200000  IOMD
  *   &03310000  tasti del mouse (bit 4-6, attivi bassi)
- *   &033C0000  identita' delle schede (assenti)
+ *   &033C0000  schede di espansione: la 0 porta il modulo HostFS (come
+ *              sull'Archimedes, un byte per parola), le altre sono assenti
  *   &03400000  VIDC20
  *   &08000000  spazio EASI delle schede
  *   &10000000  DRAM: quattro banchi da 64 MB (&10, &14, &18, &1C000000)
@@ -35,6 +36,7 @@ typedef struct RiscPcConfig {
     const char *cmos_path;
     double      mhz;           /* clock della CPU: 30 (ARM610) o 40 (ARM710) */
     int         arm710;
+    const char *hostfs_dir;    /* cartella dell'host vista come HostFS (NULL = niente scheda) */
 } RiscPcConfig;
 
 /* accesso a un indirizzo che nessun dispositivo riconosce (per il debug) */
@@ -72,6 +74,11 @@ typedef struct RiscPc {
     ArcTime  frame_start;
     int      flyback;
     uint64_t frames;
+
+    /* scheda di espansione 0: ROM con il modulo HostFS */
+    uint8_t *podule_rom;
+    uint32_t podule_size;
+    struct ArcHostFS *hostfs;
 
     RiscPcIoHook io_hook;
     void        *hook_user;

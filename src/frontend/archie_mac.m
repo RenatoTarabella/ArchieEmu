@@ -1052,6 +1052,15 @@ int main(int argc, char **argv)
         if (![NSFileManager.defaultManager fileExistsAtPath:adf isDirectory:&isdir] || !isdir) adf = user_folder(@"ADF");
         snprintf(adf_dir, sizeof adf_dir, "%s", adf.fileSystemRepresentation);
 
+        /* il disco HostFS: accanto all'app se c'e' una cartella HostFS, altrimenti in Documents */
+        static char hostfs_buf[PATH_MAX];
+        if (!cfg.hostfs_dir) {
+            NSString *hfs = [app_folder() stringByAppendingPathComponent:@"HostFS"];
+            if (![NSFileManager.defaultManager fileExistsAtPath:hfs isDirectory:&isdir] || !isdir) hfs = user_folder(@"HostFS");
+            snprintf(hostfs_buf, sizeof hostfs_buf, "%s", hfs.fileSystemRepresentation);
+            cfg.hostfs_dir = hostfs_buf;
+        }
+
         char err[300];
         if (app.rpc) {
             RiscPcConfig rcfg = { 0 };
@@ -1061,6 +1070,7 @@ int main(int argc, char **argv)
             rcfg.vram_mb = vram >= 0 ? (uint32_t)vram : 2;
             rcfg.arm710 = arm710;
             rcfg.mhz = mhz > 0 ? mhz : (arm710 ? 40 : 30);
+            rcfg.hostfs_dir = cfg.hostfs_dir;
             app.mhz = rcfg.mhz;
             if (!riscpc_create(&app.r, &rcfg, err, sizeof err)) {
                 show_message(@"Risc PC", [NSString stringWithUTF8String:err]);
@@ -1071,14 +1081,6 @@ int main(int argc, char **argv)
             NSString *hd = [NSUserDefaults.standardUserDefaults stringForKey:@"HardDiscRiscPC"];
             if (hd.length) riscpc_attach_hd(&app.r, hd.fileSystemRepresentation);
         } else {
-            /* il disco HostFS: accanto all'app se c'e' una cartella HostFS, altrimenti in Documents */
-            static char hostfs_buf[PATH_MAX];
-            if (!cfg.hostfs_dir) {
-                NSString *hfs = [app_folder() stringByAppendingPathComponent:@"HostFS"];
-                if (![NSFileManager.defaultManager fileExistsAtPath:hfs isDirectory:&isdir] || !isdir) hfs = user_folder(@"HostFS");
-                snprintf(hostfs_buf, sizeof hostfs_buf, "%s", hfs.fileSystemRepresentation);
-                cfg.hostfs_dir = hostfs_buf;
-            }
             cfg.ram_mb = ram ? ram : 4;
             app.mhz = mhz > 0 ? mhz : 8;
             cfg.mhz = app.mhz;

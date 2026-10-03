@@ -2,6 +2,9 @@
  * riscpc.c - Montaggio della macchina Risc PC (vedi riscpc.h)
  */
 #include "riscpc.h"
+#include "../archie/hostfs.h"
+#include "../archie/hostfs_module.h"
+#include "../archie/podule.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -123,6 +126,10 @@ static uint32_t io_read(RiscPc *m, uint32_t a, int size)
     } else if ((a & 0xFFFF0000u) == 0x03310000u) {
         /* tasti del mouse, attivi bassi: bit 4 Adjust, 5 Menu, 6 Select */
         v = (uint32_t)(~m->mouse_buttons & 7u) << 4;
+        known = 1;
+    } else if ((a & 0xFFFF0000u) == 0x033C0000u) {
+        /* schede: la 0 con il modulo HostFS, le altre leggono &FF (assenti) */
+        v = podule_read(m->podule_rom, m->podule_size, a & 0xFFFF);
         known = 1;
     } else if ((a & 0xFFFC0000u) == 0x033C0000u || (a & 0xF8000000u) == 0x08000000u) {
         /* schede di espansione assenti (anche nello spazio EASI): il bit 1 dell'identita' a 1 vuol dire "niente" */
@@ -264,6 +271,54 @@ static uint8_t *load_file(const char *path, uint32_t *size)
     return d;
 }
 
+/* ------------------------------------------------------------------ */
+/* HostFS                                                             */
+/* ------------------------------------------------------------------ */
+
+/* memoria logica di RISC OS: attraverso la MMU (permessi del supervisore) */
+static uint8_t *logical(RiscPc *m, uint32_t va, int write)
+{
+    uint32_t pa;
+    if (arm6_translate(&m->cpu, va, write, 0, &pa)) return NULL;
+    return (uint8_t *)riscpc_phys(m, pa, 1);
+}
+
+static uint8_t hostfs_rd8(void *ctx, uint32_t a)
+{
+    uint8_t *p = logical(ctx, a, 0);
+    return p ? *p : 0;
+}
+
+static void hostfs_wr8(void *ctx, uint32_t a, uint8_t v)
+{
+    RiscPc *m = ctx;
+    uint8_t *p = logical(m, a, 1);
+    int ro;
+    (void)ro;
+    if (p && (a >> 24) != 0) *p = v;            /* (la ROM a 0 non si scrive) */
+    else if (p) *p = v;
+}
+
+/* le SWI riservate del modulo HostFS: il lavoro lo fa l'host */
+static int riscpc_swi(Arm6 *cpu, uint32_t comment, void *user)
+{
+    RiscPc *m = user;
+    uint32_t n = comment & ~0x20000u;            /* senza il bit X */
+    if (!m->hostfs || n < ARC_HOSTFS_SWI || n >= ARC_HOSTFS_SWI + 8) return 0;
+    HostFsRegs regs;
+    memcpy(regs.r, cpu->r, sizeof regs.r);
+    regs.v = (cpu->cpsr & ARM6_V) != 0;
+    arc_hostfs_call(m->hostfs, &regs, (int)(n - ARC_HOSTFS_SWI));
+    memcpy(cpu->r, regs.r, 15 * sizeof(uint32_t));
+    cpu->cpsr = regs.v ? cpu->cpsr | ARM6_V : cpu->cpsr & ~ARM6_V;
+    return 1;
+}
+
+static int hostfs_insert(void *ctx, int drive, const char *path)
+{
+    return riscpc_insert_floppy(ctx, drive, path);
+}
+
 int riscpc_insert_floppy(RiscPc *m, int drive, const char *path)
 {
     return fdc_insert(&m->sio.fdc.media, drive, path);
@@ -289,10 +344,14 @@ int riscpc_attach_hd(RiscPc *m, const char *path)
 void riscpc_detach_hd(RiscPc *m)
 {
     ide_detach(&m->sio.ide);
+    if (m->hostfs) arc_hostfs_close_all(m->hostfs);
+    free(m->hostfs);
+    free(m->podule_rom);
 }
 
 void riscpc_reset(RiscPc *m)
 {
+    if (m->hostfs) arc_hostfs_close_all(m->hostfs);
     iomd_reset(&m->iomd, m->now);
     superio_reset(&m->sio, m->now);
     ps2kbd_reset(&m->kbd);
@@ -337,6 +396,22 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
     if (cfg->cmos_path) snprintf(m->cmos_path, sizeof m->cmos_path, "%s", cfg->cmos_path);
     cmos_init(&m->cmos, cfg->cmos_path);
     m->sda_in = 1;
+    if (cfg->hostfs_dir && cfg->hostfs_dir[0]) {
+        /* scheda 0 con il modulo HostFS: RISC OS lo carica all'avvio */
+        m->podule_size = PODULE_WINDOW;
+        m->podule_rom = malloc(m->podule_size);
+        m->hostfs = malloc(sizeof *m->hostfs);
+        if (!m->podule_rom || !m->hostfs ||
+            !podule_build(m->podule_rom, m->podule_size, hostfs_module, sizeof hostfs_module, "ArchieEmu HostFS")) {
+            snprintf(err, errsize, "impossibile preparare la scheda HostFS");
+            return 0;
+        }
+        arc_hostfs_init_mem(m->hostfs, cfg->hostfs_dir, hostfs_rd8, hostfs_wr8, m);
+        m->hostfs->insert = hostfs_insert;
+        m->hostfs->insert_ctx = m;
+        m->cpu.swi_hook = riscpc_swi;
+        m->cpu.swi_user = m;
+    }
     m->mhz = cfg->mhz > 0 ? cfg->mhz : (cfg->arm710 ? 40 : 30);
     update_speed(m);
     riscpc_reset(m);

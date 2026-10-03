@@ -5,7 +5,7 @@
  * stata la CPU e salva lo schermo in PNG.
  *
  *   riscpc_boot --rom ROM350 [--ms 3000] [--png schermo.png] [--ram 16] [--vram 1]
- *               [--floppy a.adf] [--floppy2 b.adf] [--hd disco.hdf] [--blank] [--wav suono.wav] [--create-hd disco.hdf MB]
+ *               [--hostfs cartella] [--floppy a.adf] [--floppy2 b.adf] [--hd disco.hdf] [--blank] [--wav suono.wav] [--create-hd disco.hdf MB]
  *               [--keys "testo{ENTER}"] [--keys-at ms]   (vedi riscpc_keys.h; da 10 s)
  *               [--arm710] [--trace-io] [--trace-vectors] [--hist] [--trace N] [--trace-at istr]
  *               [--trace-modes] [--watch-low] [--break pc] [--watch-io lo hi] [--ring N]   (le ultime N istruzioni prima del primo abort o undef)
@@ -184,6 +184,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--ram") && v)   { cfg.ram_mb = (uint32_t)atoi(v); i++; }
         else if (!strcmp(a, "--vram") && v)  { cfg.vram_mb = (uint32_t)atoi(v); i++; }
         else if (!strcmp(a, "--cmos") && v)  { cfg.cmos_path = v; i++; }
+        else if (!strcmp(a, "--hostfs") && v) { cfg.hostfs_dir = v; i++; }
         else if (!strcmp(a, "--trace") && v) { trace_left = strtoull(v, NULL, 10); i++; }
         else if (!strcmp(a, "--trace-at") && v) { trace_at = strtoull(v, NULL, 10); i++; }
         else if (!strcmp(a, "--ring") && v) { ring_size = (uint32_t)atoi(v); if (ring_size > 4096) ring_size = 4096; i++; }

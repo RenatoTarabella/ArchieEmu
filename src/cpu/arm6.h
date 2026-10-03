@@ -100,7 +100,7 @@ typedef struct Arm6 {
     uint32_t ttb;            /* c2 */
     uint32_t dacr;           /* c3 */
     uint32_t fsr;            /* c5 */
-    uint32_t far;            /* c6 */
+    uint32_t far_addr;            /* c6 (FAR) */
     Arm6TlbEntry tlb[ARM6_TLB_SIZE];
 
     ArmBus      bus;

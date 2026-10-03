@@ -22,6 +22,18 @@ static void update_speed(RiscPc *m)
     m->units_per_cycle_q16 = (uint32_t)(24.0 / m->mhz * 65536.0 + 0.5);
 }
 
+void riscpc_set_mhz(RiscPc *m, double mhz)
+{
+    m->mhz = mhz > 0 ? mhz : 30;
+    update_speed(m);
+}
+
+uint32_t riscpc_border_rgb(const RiscPc *m)
+{
+    uint32_t c = m->vidc.border;                      /* R nei bit bassi */
+    return (c & 0xFF) << 16 | (c & 0xFF00) | ((c >> 16) & 0xFF);
+}
+
 static void update_lines(RiscPc *m)
 {
     m->cpu.irq_line = iomd_irq(&m->iomd);

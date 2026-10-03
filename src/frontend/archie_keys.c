@@ -3,6 +3,7 @@
  * (vedi archie_keys.h)
  */
 #include "archie_keys.h"
+#include "riscpc/ps2kbd.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -25,16 +26,52 @@ static const CharKey char_keys[] = {
     { ' ', 0x20, 0 },
 };
 
+/* La tastiera PS/2 UK del Risc PC: disposizione PC britannica (verificata
+   con riscpc_boot facendo scrivere a RISC OS 3.5 i simboli). */
+static const CharKey char_keys_pc[] = {
+    { '\'', 0xC0, 0 }, { '@', 0xC0, 1 }, { '-', 0xBD, 0 }, { '_', 0xBD, 1 }, { '=', 0xBB, 0 }, { '+', 0xBB, 1 },
+    { '[', 0xDB, 0 }, { '{', 0xDB, 1 }, { ']', 0xDD, 0 }, { '}', 0xDD, 1 }, { '\\', 0xDC, 0 }, { '|', 0xDC, 1 },
+    { ';', 0xBA, 0 }, { ':', 0xBA, 1 }, { ',', 0xBC, 0 }, { '<', 0xBC, 1 }, { '.', 0xBE, 0 }, { '>', 0xBE, 1 },
+    { '/', 0xBF, 0 }, { '?', 0xBF, 1 }, { '`', 0xDF, 0 }, { 0xAC, 0xDF, 1 }, { '#', 0xDE, 0 }, { '~', 0xDE, 1 },
+    { ')', '0', 1 }, { '!', '1', 1 }, { '"', '2', 1 }, { 0xA3, '3', 1 }, { '$', '4', 1 },
+    { '%', '5', 1 }, { '^', '6', 1 }, { '&', '7', 1 }, { '*', '8', 1 }, { '(', '9', 1 },
+    { ' ', 0x20, 0 },
+};
+
+static int archie_code(int vk, int extended) { return kbd_code_from_vk(vk, extended); }
+static void archie_send(void *ctx, int code, int down) { kbd_key((Kbd *)ctx, code, down); }
+
 void keys_init(ArchieKeys *k, Kbd *kbd)
 {
     memset(k, 0, sizeof *k);
     k->kbd = kbd;
+    k->code_of = archie_code;
+    k->send_fn = archie_send;
+    k->send_ctx = kbd;
+    k->chars = char_keys;
+    k->nchars = (int)(sizeof char_keys / sizeof char_keys[0]);
+}
+
+static int ps2_code(int vk, int extended)
+{
+    uint32_t c = ps2_code_from_vk(vk, extended);
+    return c ? (int)c : -1;
+}
+
+void keys_init_ps2(ArchieKeys *k, KeysSendFn send, void *ctx)
+{
+    memset(k, 0, sizeof *k);
+    k->code_of = ps2_code;
+    k->send_fn = send;
+    k->send_ctx = ctx;
+    k->chars = char_keys_pc;
+    k->nchars = (int)(sizeof char_keys_pc / sizeof char_keys_pc[0]);
 }
 
 static void send_now(ArchieKeys *k, int code, int down)
 {
     if (k->trace) fprintf(stderr, "    tasto &%02X %s\n", code, down ? "giu'" : "su");
-    if (code >= 0) kbd_key(k->kbd, code, down);
+    if (code >= 0) k->send_fn(k->send_ctx, code, down);
 }
 
 int keys_pending(const ArchieKeys *k) { return (k->out_tail - k->out_head) & 255; }
@@ -49,7 +86,7 @@ static void send(ArchieKeys *k, int code, int down)
         return;
     }
     if (((k->out_tail + 1) & 255) == k->out_head) return;       /* coda piena */
-    k->out_code[k->out_tail] = (uint8_t)code;
+    k->out_code[k->out_tail] = code;
     k->out_down[k->out_tail] = (uint8_t)down;
     k->out_tail = (k->out_tail + 1) & 255;
 }
@@ -72,7 +109,7 @@ static void tap(ArchieKeys *k, int code)
 /* porta lo Shift della macchina allo stato 'want' per un tasto, poi lo rimette */
 static void tap_with_shift(ArchieKeys *k, int code, int want)
 {
-    int sc = kbd_code_from_vk(K_SHIFT, 0);
+    int sc = k->code_of(K_SHIFT, 0);
     if (want != (k->shift_held != 0)) send(k, sc, want);
     tap(k, code);
     if (want != (k->shift_held != 0)) send(k, sc, k->shift_held != 0);
@@ -85,26 +122,26 @@ void keys_char(ArchieKeys *k, unsigned ch)
     k->dead_pending = 0;
     if (!k->char_expected || ch < 32) return;
 
-    for (size_t i = 0; i < sizeof char_keys / sizeof char_keys[0]; i++) {
-        if (char_keys[i].ch == ch) {
-            tap_with_shift(k, kbd_code_from_vk(char_keys[i].vk, 0), char_keys[i].shift);
+    for (int i = 0; i < k->nchars; i++) {
+        if (k->chars[i].ch == ch) {
+            tap_with_shift(k, k->code_of(k->chars[i].vk, 0), k->chars[i].shift);
             return;
         }
     }
     if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) {
         int upper = ch >= 'A' && ch <= 'Z';
         int vk = ch >= 'a' ? (int)ch - 32 : (int)ch;
-        tap_with_shift(k, kbd_code_from_vk(vk, 0), upper);
+        tap_with_shift(k, k->code_of(vk, 0), upper);
         return;
     }
     if (ch >= 128 && ch < 256) {
         /* Alt + codice decimale sul tastierino numerico (Latin-1) */
-        int sc = kbd_code_from_vk(K_SHIFT, 0), alt = kbd_code_from_vk(K_MENU, 0);
+        int sc = k->code_of(K_SHIFT, 0), alt = k->code_of(K_MENU, 0);
         char digits[4];
         snprintf(digits, sizeof digits, "%u", ch);
         if (k->shift_held) send(k, sc, 0);
         send(k, alt, 1);
-        for (char *d = digits; *d; d++) tap(k, kbd_code_from_vk(K_NUMPAD0 + (*d - '0'), 0));
+        for (char *d = digits; *d; d++) tap(k, k->code_of(K_NUMPAD0 + (*d - '0'), 0));
         send(k, alt, 0);
         if (k->shift_held) send(k, sc, 1);
     }
@@ -130,7 +167,7 @@ static void flush_ctrl(ArchieKeys *k)
     if (k->ctrl_pending) {
         k->ctrl_pending = 0;
         k->ctrl_sent = 1;
-        send_direct(k, kbd_code_from_vk(K_CONTROL, 0), 1);
+        send_direct(k, k->code_of(K_CONTROL, 0), 1);
     }
 }
 
@@ -158,7 +195,7 @@ void keys_key(ArchieKeys *k, int vk, int extended, int down, int repeat, uint32_
             if (!k->ctrl_pending && !k->ctrl_sent) { k->ctrl_pending = 1; k->ctrl_time = time; k->ctrl_fake = 0; }
         } else {
             if (k->ctrl_pending) flush_ctrl(k);          /* Ctrl premuto e rilasciato da solo */
-            if (k->ctrl_sent) send_direct(k, kbd_code_from_vk(K_CONTROL, 0), 0);
+            if (k->ctrl_sent) send_direct(k, k->code_of(K_CONTROL, 0), 0);
             k->ctrl_pending = k->ctrl_sent = k->ctrl_fake = 0;
         }
         return;
@@ -181,5 +218,5 @@ void keys_key(ArchieKeys *k, int vk, int extended, int down, int repeat, uint32_
     }
     if (!down && k->suppressed[vk & 255]) { k->suppressed[vk & 255] = 0; return; }
     if (down && vk >= 'A' && vk <= 'Z') k->dead_pending = 0;
-    send_direct(k, kbd_code_from_vk(vk, extended), down);
+    send_direct(k, k->code_of(vk, extended), down);
 }

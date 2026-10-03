@@ -88,7 +88,7 @@ static void exc_hook(Arm6 *cpu, uint32_t vector, uint32_t link, void *user)
     if (trace_vectors && vector != ARM6_VEC_IRQ && vector != ARM6_VEC_SWI) {
         static const char *names[8] = { "RESET", "UNDEF", "SWI", "PABORT", "DABORT", "ADDREX", "IRQ", "FIQ" };
         fprintf(stderr, "[%10llu] %s da %08X (%s) FSR %02X FAR %08X\n", (unsigned long long)cpu->instructions,
-                names[(vector >> 2) & 7], link, arm6_mode_name(arm6_mode(cpu)), cpu->fsr, cpu->far);
+                names[(vector >> 2) & 7], link, arm6_mode_name(arm6_mode(cpu)), cpu->fsr, cpu->far_addr);
     }
 }
 

@@ -351,7 +351,7 @@ int arm6_translate(Arm6 *c, uint32_t va, int write, int user, uint32_t *pa)
 static int fault(Arm6 *c, uint32_t va, int status)
 {
     c->fsr = (uint32_t)status;
-    c->far = va;
+    c->far_addr = va;
     return 1;
 }
 
@@ -788,7 +788,7 @@ static int exec_cp15(Arm6 *c, uint32_t i)
         case 2:  v = c->ttb; break;
         case 3:  v = c->dacr; break;
         case 5:  v = c->fsr; break;
-        case 6:  v = c->far; break;
+        case 6:  v = c->far_addr; break;
         default: v = 0; break;
         }
         if (rd == 15) c->cpsr = (c->cpsr & 0x0FFFFFFFu) | (v & 0xF0000000u);

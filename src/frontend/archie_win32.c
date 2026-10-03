@@ -1,8 +1,14 @@
 /*
- * archie_win32.c - Finestra della macchina Archimedes (Win32/GDI).
+ * archie_win32.c - Finestra delle macchine Archimedes e Risc PC (Win32/GDI).
  *
  *   archie [--rom file] [--floppy disco.adf] [--floppy2 disco.adf]
  *          [--ram MB] [--mhz N] [--cmos file] [--hostfs cartella] [--right-menu]
+ *          [--riscpc] [--vram MB] [--arm710]
+ *
+ * Senza --rom si apre la finestra iniziale (splash_win32.c) che fa scegliere
+ * macchina, ROM, processore e memoria. Con --rom la macchina si deduce dal
+ * nome della ROM (ROM350 e successive: Risc PC). Il Risc PC per ora non ha
+ * floppy, disco fisso, HostFS ne' suono.
  *
  * HostFS: la cartella "HostFS" accanto all'eseguibile (creata se manca)
  * compare in RISC OS come disco, con l'icona sulla barra.
@@ -32,12 +38,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include "archie/archie.h"
+#include "riscpc/riscpc.h"
 #include "archie_keys.h"
+#include "splash_win32.h"
 
 #define FRAME_HZ   50
 #define TURBO_MHZ  64.0
-#define BUF_W      1024
-#define BUF_H      768
+#define TURBO_MHZ_RPC 200.0
+#define BUF_W      2048
+#define BUF_H      2048
 
 /* ------------------------------------------------------------------ */
 /* audio: waveOut, buffer da 20 ms                                    */
@@ -125,6 +134,9 @@ static void audio_pump(Archie *a)
 
 typedef struct App {
     Archie    a;
+    RiscPc    r;
+    int       rpc;                   /* la macchina e' il Risc PC */
+    int       rpc_buttons;           /* tasti del mouse premuti (bit 0 Adjust, 1 Menu, 2 Select) */
     HWND      hwnd;
     uint32_t  pixels[BUF_W * BUF_H];
     int       disp_w, disp_h;        /* ultima immagine */
@@ -164,7 +176,8 @@ static const char *base_name(const char *p)
 static void update_title(void)
 {
     char t[256];
-    snprintf(t, sizeof t, "Archimedes - %s%s", app.rom_name, app.captured ? "   (Ctrl+Alt: free mouse)" : "");
+    snprintf(t, sizeof t, "%s - %s%s", app.rpc ? "Risc PC" : "Archimedes", app.rom_name,
+             app.captured ? "   (Ctrl+Alt: free mouse)" : "");
     if (strcmp(t, app.title)) {
         strcpy(app.title, t);
         SetWindowTextA(app.hwnd, t);
@@ -197,10 +210,17 @@ static void fit_window(void)
 static void present(HDC dc)
 {
     int w = 0, h = 0;
-    VidcTiming t;
-    vidc_timing(&app.a.vidc, &t);
-    if (t.valid) archie_render(&app.a, app.pixels, BUF_W, &w, &h);
-    if (w <= 0 || h <= 0) { w = 640; h = 256; memset(app.pixels, 0, sizeof app.pixels); }
+    uint32_t border;
+    if (app.rpc) {
+        riscpc_render(&app.r, app.pixels, BUF_W, &w, &h);
+        border = riscpc_border_rgb(&app.r);
+    } else {
+        VidcTiming t;
+        vidc_timing(&app.a.vidc, &t);
+        if (t.valid) archie_render(&app.a, app.pixels, BUF_W, &w, &h);
+        border = vidc_border_rgb(&app.a.vidc);
+    }
+    if (w <= 0 || h <= 0) { w = 640; h = app.rpc ? 480 : 256; memset(app.pixels, 0, (size_t)BUF_W * (size_t)h * 4); }
     if (w != app.disp_w || h != app.disp_h) {
         app.disp_w = w;
         app.disp_h = h;
@@ -216,7 +236,6 @@ static void present(HDC dc)
     int ox = (cw - sw) / 2, oy = (ch - sh) / 2;
     app.img_x = ox; app.img_y = oy; app.img_w = sw; app.img_h = sh;
 
-    uint32_t border = vidc_border_rgb(&app.a.vidc);
     HBRUSH br = CreateSolidBrush(RGB((border >> 16) & 255, (border >> 8) & 255, border & 255));
     RECT bands[4] = { { 0, 0, cw, oy }, { 0, oy + sh, cw, ch }, { 0, oy, ox, oy + sh }, { ox + sw, oy, cw, oy + sh } };
     for (int i = 0; i < 4; i++) FillRect(dc, &bands[i], br);
@@ -251,6 +270,7 @@ static void insert_floppy(int drive, const char *path)
 /* dischetti cambiati da RISC OS (*HostFS_Insert): il titolo li segue */
 static void sync_floppy_names(void)
 {
+    if (app.rpc) return;
     for (int d = 0; d < 2; d++) {
         const FdcDrive *fd = &app.a.fdc.drive[d];
         const char *name = fd->image ? base_name(fd->path) : "";
@@ -261,7 +281,22 @@ static void sync_floppy_names(void)
     }
 }
 
-static void mouse_button(int code, int down) { kbd_key(&app.a.kbd, code, down); }
+/* code: tasto dell'Archimedes (&70 Select, &71 Menu, &72 Adjust) */
+static void mouse_button(int code, int down)
+{
+    if (!app.rpc) { kbd_key(&app.a.kbd, code, down); return; }
+    int bit = code == 0x70 ? 4 : code == 0x71 ? 2 : 1;
+    app.rpc_buttons = down ? app.rpc_buttons | bit : app.rpc_buttons & ~bit;
+    riscpc_mouse_buttons(&app.r, app.rpc_buttons);
+}
+
+static void mouse_move(int dx, int dy)
+{
+    if (app.rpc) riscpc_mouse_move(&app.r, dx, dy);
+    else         kbd_mouse_move(&app.a.kbd, dx, dy);
+}
+
+static void rpc_key(void *ctx, int code, int down) { riscpc_key((RiscPc *)ctx, (uint32_t)code, down); }
 
 static ArchieKeys keys;
 
@@ -333,7 +368,7 @@ static void choose_floppy(int drive)
 
 /* barra dei menu, come sul Mac */
 enum { CMD_INSERT0 = 100, CMD_INSERT1, CMD_EJECT0, CMD_EJECT1, CMD_TURBO, CMD_SOUND, CMD_RESET, CMD_RIGHT_MENU, CMD_QUIT,
-       CMD_RAM1, CMD_RAM2, CMD_RAM4 };
+       CMD_RAM1, CMD_RAM2, CMD_RAM4, CMD_NEW };
 
 static HMENU build_menu(void)
 {
@@ -344,17 +379,21 @@ static HMENU build_menu(void)
     AppendMenuA(disc, MF_STRING, CMD_EJECT0, "Eject :0");
     AppendMenuA(disc, MF_STRING, CMD_EJECT1, "Eject :1");
     AppendMenuA(mach, MF_STRING, CMD_TURBO, "Turbo");
-    AppendMenuA(mach, MF_STRING, CMD_SOUND, "Sound");
+    if (!app.rpc) {                                 /* il Risc PC non ha ancora il suono */
+        AppendMenuA(mach, MF_STRING, CMD_SOUND, "Sound");
+        AppendMenuA(mach, MF_SEPARATOR, 0, NULL);
+        AppendMenuA(mach, MF_STRING, CMD_RAM1, "RAM 1 MB (A3000)");
+        AppendMenuA(mach, MF_STRING, CMD_RAM2, "RAM 2 MB");
+        AppendMenuA(mach, MF_STRING, CMD_RAM4, "RAM 4 MB");
+    }
     AppendMenuA(mach, MF_SEPARATOR, 0, NULL);
-    AppendMenuA(mach, MF_STRING, CMD_RAM1, "RAM 1 MB (A3000)");
-    AppendMenuA(mach, MF_STRING, CMD_RAM2, "RAM 2 MB");
-    AppendMenuA(mach, MF_STRING, CMD_RAM4, "RAM 4 MB");
-    AppendMenuA(mach, MF_SEPARATOR, 0, NULL);
-    AppendMenuA(mach, MF_STRING, CMD_RESET, "Reset\tCtrl+Break");
+    AppendMenuA(mach, MF_STRING, CMD_RESET, app.rpc ? "Reset" : "Reset\tCtrl+Break");
+    AppendMenuA(mach, MF_STRING, CMD_NEW, "Choose another machine...");
     AppendMenuA(mach, MF_SEPARATOR, 0, NULL);
     AppendMenuA(mach, MF_STRING, CMD_QUIT, "Quit");
     AppendMenuA(mouse, MF_STRING, CMD_RIGHT_MENU, "Right button is Menu");
-    AppendMenuA(bar, MF_POPUP, (UINT_PTR)disc, "&Disc");
+    if (!app.rpc) AppendMenuA(bar, MF_POPUP, (UINT_PTR)disc, "&Disc");
+    else          DestroyMenu(disc);
     AppendMenuA(bar, MF_POPUP, (UINT_PTR)mach, "&Machine");
     AppendMenuA(bar, MF_POPUP, (UINT_PTR)mouse, "M&ouse");
     return bar;
@@ -373,10 +412,30 @@ static void menu_command(int id)
     }
     case CMD_TURBO:
         app.turbo = !app.turbo;
-        archie_set_mhz(&app.a, app.turbo ? TURBO_MHZ : app.mhz);
+        if (app.rpc) riscpc_set_mhz(&app.r, app.turbo ? TURBO_MHZ_RPC : app.mhz);
+        else         archie_set_mhz(&app.a, app.turbo ? TURBO_MHZ : app.mhz);
         break;
     case CMD_SOUND: audio.muted = !audio.muted; break;
-    case CMD_RESET: archie_reset(&app.a); break;
+    case CMD_RESET:
+        if (app.rpc) riscpc_reset(&app.r);
+        else         archie_reset(&app.a);
+        break;
+    case CMD_NEW: {
+        /* si riparte con la finestra iniziale: un processo nuovo, questo si chiude */
+        char exe[MAX_PATH], cmd[MAX_PATH + 16];
+        GetModuleFileNameA(NULL, exe, MAX_PATH);
+        snprintf(cmd, sizeof cmd, "\"%s\" --choose", exe);
+        STARTUPINFOA si;
+        PROCESS_INFORMATION pi;
+        memset(&si, 0, sizeof si);
+        si.cb = sizeof si;
+        if (CreateProcessA(exe, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+            DestroyWindow(app.hwnd);
+        }
+        break;
+    }
     case CMD_RAM1: case CMD_RAM2: case CMD_RAM4: {
         uint32_t mb = id == CMD_RAM1 ? 1 : id == CMD_RAM2 ? 2 : 4;
         if (mb != app.a.ram_size >> 20 &&
@@ -405,6 +464,7 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         CheckMenuItem(m, CMD_RAM1, app.a.ram_size == 1u << 20 ? MF_CHECKED : MF_UNCHECKED);
         CheckMenuItem(m, CMD_RAM2, app.a.ram_size == 2u << 20 ? MF_CHECKED : MF_UNCHECKED);
         CheckMenuItem(m, CMD_RAM4, app.a.ram_size == 4u << 20 ? MF_CHECKED : MF_UNCHECKED);
+        if (app.rpc) return 0;
         EnableMenuItem(m, CMD_EJECT0, app.a.fdc.drive[0].image ? MF_ENABLED : MF_GRAYED);
         EnableMenuItem(m, CMD_EJECT1, app.a.fdc.drive[1].image ? MF_ENABLED : MF_GRAYED);
         return 0;
@@ -444,7 +504,7 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             ScreenToClient(hwnd, &c);
             int dx = x - c.x, dy = y - c.y;
             if (dx || dy) {
-                kbd_mouse_move(&app.a.kbd, dx, -dy);
+                mouse_move(dx, -dy);
                 POINT s = client_center();
                 SetCursorPos(s.x, s.y);
             }
@@ -454,11 +514,13 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             /* unita' del mouse Archimedes: circa 2 unita' OS per passo; lo
                schermo e' largo 1280 unita' OS */
             double k = 1280.0 / 2.0 / app.img_w;
+            /* Risc PC: RISC OS muove il puntatore di 1,5 pixel per passo */
+            if (app.rpc) k = (app.disp_w ? app.disp_w : 640) / 1.5 / app.img_w;
             app.acc_x += (x - app.last_x) * k;
             app.acc_y -= (y - app.last_y) * k;
             int dx = (int)app.acc_x, dy = (int)app.acc_y;
             if (dx || dy) {
-                kbd_mouse_move(&app.a.kbd, dx, dy);
+                mouse_move(dx, dy);
                 app.acc_x -= dx;
                 app.acc_y -= dy;
             }
@@ -487,7 +549,7 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_DROPFILES: {
         HDROP drop = (HDROP)wp;
         char path[MAX_PATH];
-        if (DragQueryFileA(drop, 0, path, MAX_PATH)) insert_floppy(GetKeyState(VK_SHIFT) < 0 ? 1 : 0, path);
+        if (!app.rpc && DragQueryFileA(drop, 0, path, MAX_PATH)) insert_floppy(GetKeyState(VK_SHIFT) < 0 ? 1 : 0, path);
         DragFinish(drop);
         return 0;
     }
@@ -527,66 +589,107 @@ static const char *find_file(const char *const *rel, size_t n, char *buf, size_t
     return NULL;
 }
 
+
+/* la cartella HostFS: quella del progetto o accanto all'eseguibile (creata se manca) */
+static const char *hostfs_folder(void)
+{
+    static char buf[MAX_PATH];
+    static const char *dirs[] = { "HostFS", "..\\HostFS", "..\\..\\HostFS", "..\\..\\..\\HostFS" };
+    if (find_file(dirs, sizeof dirs / sizeof dirs[0], buf, sizeof buf)) return buf;
+    DWORD n = GetModuleFileNameA(NULL, buf, MAX_PATH);
+    char *slash = n ? strrchr(buf, '\\') : NULL;
+    if (!slash) return NULL;
+    strcpy(slash + 1, "HostFS");
+    CreateDirectoryA(buf, NULL);
+    return buf;
+}
+
 int main(int argc, char **argv)
 {
     ArchieConfig cfg = { NULL, 4, NULL, { NULL, NULL }, 8, NULL };
-    app.mhz = 8;
+    RiscPcConfig rcfg = { 0 };
+    int force_rpc = 0, arm710 = 0, choose = 0, vram = -1;
+    double mhz = 0;
+    uint32_t ram = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--rom") && i + 1 < argc) cfg.rom_path = argv[++i];
         else if (!strcmp(argv[i], "--floppy") && i + 1 < argc) cfg.floppy[0] = argv[++i];
         else if (!strcmp(argv[i], "--floppy2") && i + 1 < argc) cfg.floppy[1] = argv[++i];
-        else if (!strcmp(argv[i], "--ram") && i + 1 < argc) cfg.ram_mb = (uint32_t)atoi(argv[++i]);
-        else if (!strcmp(argv[i], "--mhz") && i + 1 < argc) app.mhz = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--ram") && i + 1 < argc) ram = (uint32_t)atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--vram") && i + 1 < argc) vram = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--mhz") && i + 1 < argc) mhz = atof(argv[++i]);
         else if (!strcmp(argv[i], "--cmos") && i + 1 < argc) cfg.cmos_path = argv[++i];
         else if (!strcmp(argv[i], "--hostfs") && i + 1 < argc) cfg.hostfs_dir = argv[++i];
         else if (!strcmp(argv[i], "--right-menu")) app.right_menu = 1;
+        else if (!strcmp(argv[i], "--riscpc")) force_rpc = 1;
+        else if (!strcmp(argv[i], "--arm710")) arm710 = 1;
+        else if (!strcmp(argv[i], "--choose")) choose = 1;
         else if (argv[i][0] != '-' && !cfg.floppy[0]) cfg.floppy[0] = argv[i];   /* file aperto con l'eseguibile */
     }
-    if (app.mhz <= 0) app.mhz = 8;
-    cfg.mhz = app.mhz;
+    HINSTANCE inst = GetModuleHandleA(NULL);
 
+    /* quale macchina: dalla finestra iniziale, o da --rom (e dal nome della ROM) */
     static char rom_buf[MAX_PATH], cmos_buf[MAX_PATH];
-    if (!cfg.rom_path) {
-        static const char *roms[] = { "roms\\1. Major\\ROM311", "..\\roms\\1. Major\\ROM311",
-                                      "..\\..\\roms\\1. Major\\ROM311", "..\\..\\..\\roms\\1. Major\\ROM311" };
-        cfg.rom_path = find_file(roms, sizeof roms / sizeof roms[0], rom_buf, sizeof rom_buf);
+    MachineChoice mc;
+    memset(&mc, 0, sizeof mc);
+    if (!cfg.rom_path && (choose || !cfg.floppy[0])) {
+        if (!splash_choose(inst, &mc)) return 0;
+        snprintf(rom_buf, sizeof rom_buf, "%s", mc.rom);
+        cfg.rom_path = rom_buf;
+        app.rpc = mc.riscpc;
+        if (!ram) ram = (uint32_t)mc.ram_mb;
+        if (vram < 0) vram = mc.vram_mb;
+        arm710 = mc.cpu == CPU_ARM710;
+        snprintf(app.rom_name, sizeof app.rom_name, "%s", mc.rom_name);
+    } else {
         if (!cfg.rom_path) {
-            MessageBoxA(NULL, "ROM non trovata: usa --rom percorso\\ROM311", "Archimedes", MB_ICONERROR);
-            return 1;
+            static const char *roms[] = { "roms\\1. Major\\ROM311", "..\\roms\\1. Major\\ROM311",
+                                          "..\\..\\roms\\1. Major\\ROM311", "..\\..\\..\\roms\\1. Major\\ROM311" };
+            cfg.rom_path = find_file(roms, sizeof roms / sizeof roms[0], rom_buf, sizeof rom_buf);
+            if (!cfg.rom_path) {
+                MessageBoxA(NULL, "ROM non trovata: usa --rom percorso\\ROM311", "ArchieEmu", MB_ICONERROR);
+                return 1;
+            }
         }
+        int rpc = 0, v = splash_rom_version(cfg.rom_path, &rpc);
+        app.rpc = rpc || force_rpc;
+        if (v) splash_rom_name(v, app.rom_name, sizeof app.rom_name);
+        else   snprintf(app.rom_name, sizeof app.rom_name, "%s", base_name(cfg.rom_path));
     }
     if (!cfg.cmos_path) {
         /* la CMOS si salva accanto alla ROM, una per ogni versione */
         snprintf(cmos_buf, sizeof cmos_buf, "%s.cmos", cfg.rom_path);
         cfg.cmos_path = cmos_buf;
     }
-    static char hostfs_buf[MAX_PATH];
-    if (!cfg.hostfs_dir) {
-        /* la cartella HostFS: quella del progetto o accanto all'eseguibile */
-        static const char *dirs[] = { "HostFS", "..\\HostFS", "..\\..\\HostFS", "..\\..\\..\\HostFS" };
-        cfg.hostfs_dir = find_file(dirs, sizeof dirs / sizeof dirs[0], hostfs_buf, sizeof hostfs_buf);
-        if (!cfg.hostfs_dir) {
-            DWORD n = GetModuleFileNameA(NULL, hostfs_buf, MAX_PATH);
-            char *slash = n ? strrchr(hostfs_buf, '\\') : NULL;
-            if (slash) {
-                strcpy(slash + 1, "HostFS");
-                CreateDirectoryA(hostfs_buf, NULL);
-                cfg.hostfs_dir = hostfs_buf;
-            }
-        }
-    }
-    snprintf(app.rom_name, sizeof app.rom_name, "%s", base_name(cfg.rom_path));
-    if (!strcmp(app.rom_name, "ROM311")) snprintf(app.rom_name, sizeof app.rom_name, "RISC OS 3.11");
-    for (int d = 0; d < 2; d++)
-        if (cfg.floppy[d]) snprintf(app.floppy_name[d], sizeof app.floppy_name[d], "%s", base_name(cfg.floppy[d]));
 
     char err[300];
-    if (!archie_create(&app.a, &cfg, err, sizeof err)) {
-        MessageBoxA(NULL, err, "Archimedes", MB_ICONERROR);
-        return 1;
+    if (app.rpc) {
+        rcfg.rom_path = cfg.rom_path;
+        rcfg.cmos_path = cfg.cmos_path;
+        rcfg.ram_mb = ram ? ram : 16;
+        rcfg.vram_mb = vram >= 0 ? (uint32_t)vram : 2;
+        rcfg.arm710 = arm710;
+        rcfg.mhz = mhz > 0 ? mhz : (arm710 ? 40 : 30);
+        app.mhz = rcfg.mhz;
+        if (!riscpc_create(&app.r, &rcfg, err, sizeof err)) {
+            MessageBoxA(NULL, err, "Risc PC", MB_ICONERROR);
+            return 1;
+        }
+        keys_init_ps2(&keys, rpc_key, &app.r);
+    } else {
+        cfg.ram_mb = ram ? ram : 4;
+        app.mhz = mhz > 0 ? mhz : 8;
+        cfg.mhz = app.mhz;
+        if (!cfg.hostfs_dir) cfg.hostfs_dir = hostfs_folder();
+        for (int d = 0; d < 2; d++)
+            if (cfg.floppy[d]) snprintf(app.floppy_name[d], sizeof app.floppy_name[d], "%s", base_name(cfg.floppy[d]));
+        if (!archie_create(&app.a, &cfg, err, sizeof err)) {
+            MessageBoxA(NULL, err, "Archimedes", MB_ICONERROR);
+            return 1;
+        }
+        keys_init(&keys, &app.a.kbd);
     }
 
-    HINSTANCE inst = GetModuleHandleA(NULL);
     WNDCLASSA wc;
     memset(&wc, 0, sizeof wc);
     wc.lpfnWndProc = wndproc;
@@ -595,16 +698,15 @@ int main(int argc, char **argv)
     wc.hIcon = LoadIcon(inst, MAKEINTRESOURCE(1));
     wc.lpszClassName = "ArchieWindow";
     RegisterClassA(&wc);
-    app.hwnd = CreateWindowA(wc.lpszClassName, "Archimedes", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-                             1280, 1024, NULL, build_menu(), inst, NULL);
-    DragAcceptFiles(app.hwnd, TRUE);
+    app.hwnd = CreateWindowA(wc.lpszClassName, app.rpc ? "Risc PC" : "Archimedes", WS_OVERLAPPEDWINDOW,
+                             CW_USEDEFAULT, CW_USEDEFAULT, 1280, 1024, NULL, build_menu(), inst, NULL);
+    if (!app.rpc) DragAcceptFiles(app.hwnd, TRUE);
     fit_window();
     update_title();
     ShowWindow(app.hwnd, SW_SHOW);
 
-    keys_init(&keys, &app.a.kbd);
     timeBeginPeriod(1);
-    audio_open();
+    if (!app.rpc) audio_open();
     double next = now_s();
     MSG msg;
     int running = 1;
@@ -617,9 +719,13 @@ int main(int argc, char **argv)
         if (!running) break;
 
         keys_tick(&keys, GetTickCount());
-        archie_run(&app.a, ARC_MS(1000 / FRAME_HZ));
-        audio_pump(&app.a);
-        sync_floppy_names();
+        if (app.rpc) {
+            riscpc_run(&app.r, ARC_MS(1000 / FRAME_HZ));
+        } else {
+            archie_run(&app.a, ARC_MS(1000 / FRAME_HZ));
+            audio_pump(&app.a);
+            sync_floppy_names();
+        }
         HDC dc = GetDC(app.hwnd);
         present(dc);
         ReleaseDC(app.hwnd, dc);
@@ -632,6 +738,7 @@ int main(int argc, char **argv)
     }
     audio_close();
     timeEndPeriod(1);
-    archie_destroy(&app.a);
+    if (app.rpc) riscpc_destroy(&app.r);
+    else         archie_destroy(&app.a);
     return 0;
 }

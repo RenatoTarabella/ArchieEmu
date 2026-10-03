@@ -80,6 +80,9 @@ ArcTime riscpc_now(const RiscPc *m);
 const uint8_t *riscpc_phys(RiscPc *m, uint32_t addr, uint32_t len);
 
 void riscpc_render(RiscPc *m, uint32_t *out, int stride, int *w, int *h);
+/* colore del bordo, 0x00RRGGBB */
+uint32_t riscpc_border_rgb(const RiscPc *m);
+void riscpc_set_mhz(RiscPc *m, double mhz);
 
 /* Tastiera: codice del set 2 (vedi ps2kbd.h), premuto o rilasciato */
 void riscpc_key(RiscPc *m, uint32_t code, int down);

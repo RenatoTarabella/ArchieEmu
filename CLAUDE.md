@@ -14,7 +14,9 @@ lessons learned that are not obvious from the code.
   CMOS, WD1772), `src/riscpc` the Risc PC (IOMD, VIDC20; plan and status in
   `docs/riscpc-plan.md`), `src/frontend` Win32 and console front ends.
 - Executables: `armwin` / `armbasic` (BASIC machine, window / console),
-  `archie` (Archimedes window), `archie_boot` (headless Archimedes for
+  `archie` (window for both the Archimedes and the Risc PC: without `--rom` a
+  startup dialog, `splash_win32.c`, picks machine, ROM, CPU and memory and
+  remembers them in `ArchieEmu.ini` next to the exe), `archie_boot` (headless Archimedes for
   diagnostics), `riscpc_boot` (headless Risc PC), `armemu`, `romdis` (`-3` for
   ARMv3), `modinfo`.
 - `disc/` is the BASIC machine's HostFS disc (`name,ffb` = tokenised BASIC).

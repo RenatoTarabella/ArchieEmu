@@ -114,10 +114,9 @@ add_library(riscpccore STATIC
     src/riscpc/vidc20.c
     src/riscpc/ps2kbd.c
     src/riscpc/riscpc.c
-    src/archie/cmos.c
 )
 target_include_directories(riscpccore PUBLIC src src/riscpc)
-target_link_libraries(riscpccore armcore)
+target_link_libraries(riscpccore archiecore)       # la CMOS e' quella dell'Archimedes
 
 add_executable(test_iomd tests/test_iomd.c src/riscpc/iomd.c src/riscpc/ps2kbd.c)
 target_include_directories(test_iomd PRIVATE src/riscpc)
@@ -141,9 +140,10 @@ endforeach()
 
 # Finestra della macchina Archimedes
 if(WIN32)
-    add_executable(archie WIN32 src/frontend/archie_win32.c src/frontend/archie_keys.c res/armwin.rc)
+    add_executable(archie WIN32 src/frontend/archie_win32.c src/frontend/archie_keys.c
+                   src/frontend/splash_win32.c res/armwin.rc)
     target_include_directories(archie PRIVATE src/frontend)
-    target_link_libraries(archie archiecore winmm shell32 comdlg32)
+    target_link_libraries(archie riscpccore archiecore winmm shell32 comdlg32)
     if(MSVC)
         set_target_properties(archie PROPERTIES LINK_FLAGS "/ENTRY:mainCRTStartup")
     endif()
@@ -168,7 +168,7 @@ if(APPLE)
     add_executable(archie MACOSX_BUNDLE src/frontend/archie_mac.m src/frontend/archie_keys.c
                    src/frontend/mac_keys.c ${MAC_ICON})
     target_include_directories(archie PRIVATE src/frontend)
-    target_link_libraries(archie archiecore "-framework Cocoa" "-framework Carbon" "-framework AudioToolbox")
+    target_link_libraries(archie riscpccore archiecore "-framework Cocoa" "-framework Carbon" "-framework AudioToolbox")
     set_target_properties(archie PROPERTIES OUTPUT_NAME "ArchieEmu Archimedes"
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/res/mac/Info-archie.plist.in)
 
@@ -183,5 +183,5 @@ endif()
 if(WIN32)
     add_executable(test_keys_es tests/test_keys_es.c src/frontend/archie_keys.c)
     target_include_directories(test_keys_es PRIVATE src/frontend)
-    target_link_libraries(test_keys_es archiecore)
+    target_link_libraries(test_keys_es riscpccore archiecore)
 endif()

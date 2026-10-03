@@ -112,10 +112,13 @@ codice copiato in questo progetto MIT.
 5. **IDE**: immagini di hard disc (`.hdf`), ADFS su IDE, formattazione con
    HForm.
 6. **VIDC20 completo e suono**: modi alti a 16/32 bpp, cursore hardware,
-   suono; poi l'integrazione nei frontend Win32 e Mac, con una finestra
-   iniziale (splash) che chiede prima del boot quale macchina aprire:
-   Archimedes (ROM fino alla 3.11, ARM2) o Risc PC (ROM 3.5/3.6/3.7,
-   ARM610 o ARM710, RAM e VRAM).
+   suono; poi l'integrazione nel frontend Mac. Su Windows la finestra c'e'
+   gia' (anticipata dopo il passo 3): `archie.exe` apre una finestra
+   iniziale (`splash_win32.c`) che chiede macchina, ROM (trovate in
+   `roms/`), processore, RAM e VRAM e le ricorda in `ArchieEmu.ini`;
+   "Choose another machine..." nel menu Machine la riapre. La tastiera del
+   Risc PC usa la stessa traduzione dell'Archimedes (`archie_keys.c`) con i
+   codici PS/2 e la disposizione PC UK. Mancano floppy, HostFS e suono.
 7. **ARM710**, poi StrongARM e RISC OS 3.7 o 3.8.
 
 Ogni passo si chiude con i test e con la ROM che arriva un po' piu' avanti

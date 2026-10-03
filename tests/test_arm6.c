@@ -552,7 +552,7 @@ TEST(mmu_translation_and_domain_faults)
     run(t);
     CHECK_EQ(t->exception, ARM6_VEC_DABORT);
     CHECK_EQ(t->cpu.fsr, 0x05);
-    CHECK_EQ(t->cpu.far, 0x03000000u);
+    CHECK_EQ(t->cpu.far_addr, 0x03000000u);
 
     t = setup_mmu(ARM6_SVC32);
     poke(t, L1 + 4 * 0x030, section(HIGH, 3, 7));
@@ -563,7 +563,7 @@ TEST(mmu_translation_and_domain_faults)
     run(t);
     CHECK_EQ(t->exception, ARM6_VEC_DABORT);
     CHECK_EQ(t->cpu.fsr, 0x79);
-    CHECK_EQ(t->cpu.far, 0x03000040u);
+    CHECK_EQ(t->cpu.far_addr, 0x03000040u);
 
     /* manager: nessun controllo dei permessi */
     t = setup_mmu(ARM6_USR32);
@@ -598,7 +598,7 @@ TEST(mmu_small_pages_and_subpage_permissions)
     CHECK_EQ(t->cpu.r[3], 0x11111111u);
     CHECK_EQ(t->exception, ARM6_VEC_DABORT);
     CHECK_EQ(t->cpu.fsr, 0x1F);                     /* permesso, pagina, dominio 1 */
-    CHECK_EQ(t->cpu.far, 0x100400u);
+    CHECK_EQ(t->cpu.far_addr, 0x100400u);
     CHECK_EQ(t->cpu.r[14], 0x801C);
 
     /* sottopagina 2 (AP 1): solo privilegiato; LDRT dal SVC usa i permessi utente */
@@ -625,7 +625,7 @@ TEST(mmu_small_pages_and_subpage_permissions)
     emit(t, MEM(1, 0, 0, 1, 0, 1, 0));
     run(t);
     CHECK_EQ(t->cpu.fsr, 0x17);
-    CHECK_EQ(t->cpu.far, 0x105000);
+    CHECK_EQ(t->cpu.far_addr, 0x105000);
 }
 
 TEST(mmu_large_page_and_ap0)
@@ -702,7 +702,7 @@ TEST(alignment_fault)
     run(t);
     CHECK_EQ(t->exception, ARM6_VEC_DABORT);
     CHECK_EQ(t->cpu.fsr, 0x01);
-    CHECK_EQ(t->cpu.far, 0x1001);
+    CHECK_EQ(t->cpu.far_addr, 0x1001);
 }
 
 TEST(pipeline_self_modifying)

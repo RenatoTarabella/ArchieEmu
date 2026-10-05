@@ -15,8 +15,11 @@
  * le trascendenti; e ogni istruzione con un operando speciale (infinito,
  * NaN, denormale, non normalizzato) o con un'eccezione (operazione non
  * valida, divisione per zero, overflow, underflow, o inesatto con la
- * trappola abilitata). Qui rimbalzano anche FML FDV FRD URD NRM: il codice
- * di supporto le calcola giuste, solo piu' lentamente.
+ * trappola abilitata). Qui rimbalzano anche URD e NRM: il codice di
+ * supporto le calcola giuste, solo piu' lentamente. FML, FDV e FRD come il
+ * codice di supporto: FML moltiplica solo i 32 bit alti delle mantisse,
+ * FDV e FRD sono DVF e RDF (il GCC usa FML per le moltiplicazioni in
+ * singola precisione).
  */
 #include "fpa.h"
 #include <string.h>
@@ -54,6 +57,7 @@
 #define T_MOVE    1
 #define T_ADD     2
 #define T_MUL     8
+#define T_FML     5
 #define T_DIV(p)  ((p) == 0 ? 30 : (p) == 1 ? 58 : 70)
 #define T_FLT     6
 #define T_FIX     8
@@ -473,7 +477,7 @@ static int exec_cpdo(Fpa *f, uint32_t i, int *cycles)
             return bounce(f);
         }
     } else {
-        if (op > 5) return bounce(f);                /* POW RPW RMF FML FDV FRD POL, non definite */
+        if (op > 11 || (op >= 6 && op <= 8)) return bounce(f);  /* POW RPW RMF POL, non definite */
         if (!is_plain(&f->f[fn])) return bounce(f);
         a = reg_num(&f->f[fn]);
         switch (op) {
@@ -482,7 +486,15 @@ static int exec_cpdo(Fpa *f, uint32_t i, int *cycles)
         case 2: b.sign ^= 1; bad = op_add(a, b, prec, rm, &r, &inexact); *cycles = T_ADD; break;  /* SUF */
         case 3: a.sign ^= 1; bad = op_add(b, a, prec, rm, &r, &inexact); *cycles = T_ADD; break;  /* RSF */
         case 4: bad = op_div(a, b, prec, rm, &r, &inexact); *cycles = T_DIV(prec); break;  /* DVF */
-        default: bad = op_div(b, a, prec, rm, &r, &inexact); *cycles = T_DIV(prec); break; /* RDF */
+        case 5: bad = op_div(b, a, prec, rm, &r, &inexact); *cycles = T_DIV(prec); break;  /* RDF */
+        case 9:                                      /* FML: i 32 bit alti delle mantisse */
+            a.mant &= 0xFFFFFFFF00000000ull;
+            b.mant &= 0xFFFFFFFF00000000ull;
+            bad = op_mul(a, b, prec, rm, &r, &inexact);
+            *cycles = T_FML;
+            break;
+        case 10: bad = op_div(a, b, prec, rm, &r, &inexact); *cycles = T_DIV(prec); break; /* FDV */
+        default: bad = op_div(b, a, prec, rm, &r, &inexact); *cycles = T_DIV(prec); break; /* FRD */
         }
         if (bad) return bounce(f);
     }

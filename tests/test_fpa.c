@@ -121,7 +121,7 @@ static void test_arith_single(int op, const char *name)
     for (int k = 0; k < 20000; k++) {
         float a = (float)rnd_double(20), b = (float)rnd_double(20), want;
         if (k % 5 == 0) b = -b;
-        want = op == 0 ? a + b : op == 1 ? a * b : op == 2 ? a - b : a / b;
+        want = op == 0 ? a + b : op == 1 || op == 9 ? a * b : op == 2 ? a - b : a / b;
         if (!is_normal_or_zero_f(want)) continue;
         put_float(0, a); put_float(1, b);
         reg[0] = 0;
@@ -157,6 +157,7 @@ int main(void)
     test_arith_double(2, "SUF");
     test_arith_double(1, "MUF");
     test_arith_double(4, "DVF");
+    test_arith_single(9, "FML");                   /* le mantisse singole stanno nei 32 bit alti */
     test_arith_single(0, "ADF");
     test_arith_single(1, "MUF");
     test_arith_single(4, "DVF");

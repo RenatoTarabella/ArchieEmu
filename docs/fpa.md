@@ -68,3 +68,12 @@ l'ARM7500FE dell'A7000+ (prossimo passo: la macchina A7000+).
 
   SQTD e SIND (rimbalzati) danno gli stessi risultati del software, e la
   divisione per zero da' "Floating point exception: division by zero".
+
+## Sul core ARMv3 (verso l'A7000+)
+
+La FPA si aggancia anche ad `arm6.c` (FPA11, per l'ARM7500FE). Prima della
+macchina A7000+, `riscpc_boot --fpa` la monta sul Risc PC solo per provarla
+(storicamente non esisteva): RISC OS 3.71 (FPEmulator 4.08) la riconosce da
+solo, FPSR &81070000; il programma di prova fa 4 cs invece di 55 sull'ARM710,
+e SQT, SIN e la divisione per zero (rimbalzati, gestore a 32 bit) danno gli
+stessi risultati del software.

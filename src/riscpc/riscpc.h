@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "../cpu/arm6.h"
+#include "../cpu/fpa.h"
 #include "../archie/archie_time.h"
 #include "../archie/cmos.h"
 #include "iomd.h"
@@ -38,6 +39,7 @@ typedef struct RiscPcConfig {
     int         arm710;
     int         strongarm;     /* StrongARM SA-110 (ARMv4): 100 MHz equivalenti */
     const char *hostfs_dir;    /* cartella dell'host vista come HostFS (NULL = niente scheda) */
+    int         fpa;           /* FPA11 (A7000+); sul Risc PC non esisteva: solo per le prove */
 } RiscPcConfig;
 
 /* accesso a un indirizzo che nessun dispositivo riconosce (per il debug) */
@@ -45,6 +47,7 @@ typedef void (*RiscPcIoHook)(void *user, int write, uint32_t addr, uint32_t valu
 
 typedef struct RiscPc {
     Arm6     cpu;
+    Fpa      fpa;                /* usata se cpu.fpa la punta */
     Iomd     iomd;
     Vidc20   vidc;
     Cmos     cmos;

@@ -17,6 +17,7 @@
  *    16 domini, FSR e FAR per gli abort dei dati.
  */
 #include "arm6.h"
+#include "fpa.h"
 #include <string.h>
 
 /* ------------------------------------------------------------------ */
@@ -915,6 +916,58 @@ static int account(Arm6 *c, uint32_t cyc)
     return (int)ticks;
 }
 
+/* ------------------------------------------------------------------ */
+/* la FPA sul bus dei coprocessori                                    */
+/* ------------------------------------------------------------------ */
+
+static uint32_t fpa_get_reg(void *ctx, int n)
+{
+    Arm6 *c = ctx;
+    return n == 15 ? r15_addr(c, 4) : c->r[n];      /* istruzione + 8 */
+}
+
+static void fpa_set_reg(void *ctx, int n, uint32_t v)
+{
+    Arm6 *c = ctx;
+    if (n < 15) c->r[n] = v;
+}
+
+static void fpa_set_flags(void *ctx, uint32_t nzcv)
+{
+    Arm6 *c = ctx;
+    c->cpsr = (c->cpsr & 0x0FFFFFFFu) | (nzcv & 0xF0000000u);
+}
+
+static int fpa_read32(void *ctx, uint32_t addr, uint32_t *v)
+{
+    Arm6 *c = ctx;
+    if (bad_address(c, addr)) return FPA_ADDR_EXC;
+    return load32(c, addr, is_user(c), v) ? FPA_DATA_ABORT : FPA_DONE;
+}
+
+static int fpa_write32(void *ctx, uint32_t addr, uint32_t v)
+{
+    Arm6 *c = ctx;
+    if (bad_address(c, addr)) return FPA_ADDR_EXC;
+    return store32(c, addr, is_user(c), v) ? FPA_DATA_ABORT : FPA_DONE;
+}
+
+static int fpa_privileged(void *ctx) { return !is_user((const Arm6 *)ctx); }
+
+/* istruzione di coprocessore 1 o 2: 0 se nessuno la prende (non definita) */
+static int exec_coproc(Arm6 *c, uint32_t i, uint32_t *cyc)
+{
+    FpaHost h = { c, fpa_get_reg, fpa_set_reg, fpa_set_flags, fpa_read32, fpa_write32, fpa_privileged };
+    int n = 1;
+    if (!c->fpa) return 0;
+    switch (fpa_exec(c->fpa, i, &h, &n)) {
+    case FPA_DONE:       *cyc = CYC(1, 0, n, 1); return 1;
+    case FPA_DATA_ABORT: data_abort(c); *cyc = CYC_EXCEPTION; return 1;
+    case FPA_ADDR_EXC:   address_exception(c); *cyc = CYC_EXCEPTION; return 1;
+    default:             return 0;
+    }
+}
+
 int arm6_step(Arm6 *c)
 {
     if (c->fiq_line && !(c->cpsr & ARM6_F)) {
@@ -998,7 +1051,10 @@ int arm6_step(Arm6 *c)
                 cyc = CYC(1, 0, 2, 1);
                 break;
             }
-            /* fallthrough: CDP e coprocessori assenti */
+            /* fallthrough: CDP/MRC/MCR degli altri coprocessori */
+        case 6:                                        /* LDC/STC */
+            if (exec_coproc(c, i, &cyc)) break;
+            /* fallthrough: nessun coprocessore la prende */
         default:
         undefined:
             take_exception(c, ARM6_VEC_UNDEF, ARM6_UND32, c->r[15], 0);

@@ -73,6 +73,7 @@ typedef struct Arm6TlbEntry {
 } Arm6TlbEntry;
 
 struct Arm6;
+struct Fpa;
 
 /* Come per l'ARM2: ritorna 1 se la SWI e' stata gestita dall'host. */
 typedef int (*Arm6SwiHook)(struct Arm6 *cpu, uint32_t comment, void *user);
@@ -119,6 +120,10 @@ typedef struct Arm6 {
     uint8_t  pipe_abort[2];
     uint32_t pipe_addr;
     int      pipe_valid;
+
+    /* coprocessore in virgola mobile (FPA11 dell'ARM7500FE, cpu/fpa.h);
+       NULL = assente: le istruzioni FPA vanno al vettore delle non definite */
+    struct Fpa *fpa;
 } Arm6;
 
 /* cpu_id: ARM6_ID_ARM610, ARM6_ID_ARM710 o ARM6_ID_SA110 */

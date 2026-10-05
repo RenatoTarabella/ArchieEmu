@@ -212,6 +212,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--break") && v && break_count < 16) { break_pc[break_count++] = (uint32_t)strtoul(v, NULL, 16); i++; }
         else if (!strcmp(a, "--arm710"))     cfg.arm710 = 1;
         else if (!strcmp(a, "--strongarm"))  cfg.strongarm = 1;
+        else if (!strcmp(a, "--fpa"))        cfg.fpa = 1;      /* FPA11: solo per le prove */
         else if (!strcmp(a, "--trace-io"))   trace_io = 1;
         else if (!strcmp(a, "--trace-vectors")) trace_vectors = 1;
         else if (!strcmp(a, "--hist"))       hist = 1;

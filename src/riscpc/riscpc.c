@@ -388,6 +388,7 @@ void riscpc_reset(RiscPc *m)
     ps2kbd_reset(&m->kbd);
     vidc20_reset(&m->vidc);
     arm6_reset(&m->cpu);
+    if (m->cpu.fpa) fpa_reset(m->cpu.fpa);
     m->frame_start = m->now;
     m->index_next = m->now - m->now % FDC82077_REV + FDC82077_REV;
     m->flyback = 0;
@@ -421,6 +422,10 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
 
     ArmBus bus = { m, bus_r32, bus_r8, bus_w32, bus_w8, bus_r16, bus_w16 };
     arm6_init(&m->cpu, &bus, cfg->strongarm ? ARM6_ID_SA110 : cfg->arm710 ? ARM6_ID_ARM710 : ARM6_ID_ARM610);
+    if (cfg->fpa) {
+        fpa_init(&m->fpa, FPA_FPA11);
+        m->cpu.fpa = &m->fpa;
+    }
     IomdHooks hooks = { m, lines_write, lines_read, to_keyboard, from_keyboard };
     superio_init(&m->sio);
     iomd_init(&m->iomd, &hooks);

@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "../cpu/arm2.h"
+#include "../cpu/fpa.h"
 #include "archie_time.h"
 #include "memc.h"
 #include "ioc.h"
@@ -27,10 +28,12 @@ typedef struct ArchieConfig {
     const char *floppy[2];       /* immagini .adf nelle unita' 0 e 1 (NULL = vuote) */
     double      mhz;             /* clock della CPU (8 = ARM2) */
     const char *hostfs_dir;      /* cartella dell'host vista come HostFS (NULL = niente scheda) */
+    int         fpa;             /* 1 = FPA10 nello zoccolo accanto all'ARM3 (come sull'A5000) */
 } ArchieConfig;
 
 typedef struct Archie {
     Arm2     cpu;
+    Fpa      fpa;                  /* usata se cpu.fpa la punta */
     Memc     memc;
     Ioc      ioc;
     Vidc     vidc;

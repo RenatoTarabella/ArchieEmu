@@ -43,6 +43,7 @@ enum {
 #include "armbus.h"
 
 struct Arm2;
+struct Fpa;
 
 /*
  * Gancio SWI: chiamato prima di prendere l'eccezione SWI.
@@ -98,6 +99,10 @@ typedef struct Arm2 {
     uint8_t  pipe_abort[2];
     uint32_t pipe_addr;      /* indirizzo di pipe[0] */
     int      pipe_valid;
+
+    /* coprocessore in virgola mobile FPA10 (cpu/fpa.h); NULL = assente, e
+       le istruzioni FPA vanno al vettore delle istruzioni non definite */
+    struct Fpa *fpa;
 } Arm2;
 
 void     arm2_init(Arm2 *cpu, const ArmBus *bus);

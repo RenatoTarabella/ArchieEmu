@@ -346,6 +346,7 @@ void archie_reset(Archie *a)
     kbd_reset(&a->kbd);
     fdc_reset(&a->fdc);
     arm2_reset(&a->cpu);
+    if (a->cpu.fpa) fpa_reset(a->cpu.fpa);
     a->frame_start = a->now;
     a->flyback = 0;
     a->snd_ptr = a->snd_end = 0;
@@ -397,6 +398,10 @@ int archie_create(Archie *a, const ArchieConfig *cfg, char *err, size_t errsize)
     ArmBus bus;
     memc_attach_cpu(&a->memc, &bus);
     arm2_init(&a->cpu, &bus);
+    if (cfg->fpa) {                 /* FPA10: serve il FPEmulator 4 (RISC OS 3.5, o caricato da disco) */
+        fpa_init(&a->fpa, FPA_FPA10);
+        a->cpu.fpa = &a->fpa;
+    }
 
     IocHooks hooks = { a, ioc_control_write, ioc_control_read, kart_to_keyboard, keyboard_to_kart };
     ioc_init(&a->ioc, &hooks);

@@ -20,6 +20,7 @@ typedef struct MachineChoice {
     int  cpu;
     int  ram_mb;
     int  vram_mb;
+    int  fpa;                 /* Archimedes: FPA10 accanto alla CPU */
 } MachineChoice;
 
 /* Versione di RISC OS dal nome del file (ROM311 -> 311), 0 se non e' una ROM

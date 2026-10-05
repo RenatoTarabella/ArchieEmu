@@ -186,6 +186,13 @@ type long test lines. The tools for that:
   (`tools/dist/HostFS`, copied into the packages). OS_CheckModeValid only
   compares with the screen memory already allocated, so its "not enough
   memory" does not mean the mode change would fail.
+- FPA10 (`src/cpu/fpa.c`, `docs/fpa.md`): executes the common cases in
+  hardware and bounces everything else synchronously (FPCR.SB), so the
+  FPEmulator 4 support code (FPASC, BSD sources from RISC OS Open) emulates the
+  bounced instruction from scratch. RISC OS 3.11 needs `FPE400` soft-loaded
+  (its FPEmulator 2.87 enables the chip with an RFC but cannot finish
+  bounces). BASIC V's assembler has no FPA mnemonics: use EQUD. `test_fpa`
+  compares S/D arithmetic bit for bit with the host's IEEE doubles.
 - Fixed-point kernels need exact refinement in BASIC at sphere edges; a false hit
   gives a non-unit normal and the specular power overflows ("Number too big").
 

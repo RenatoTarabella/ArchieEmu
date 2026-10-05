@@ -6,6 +6,7 @@
  * con shift da registro e nelle STR/STM), come nella pipeline vera.
  */
 #include "arm2.h"
+#include "fpa.h"
 #include <string.h>
 
 /* ------------------------------------------------------------------ */
@@ -535,6 +536,8 @@ static int account(Arm2 *c, uint32_t cyc, uint32_t pc)
     return (int)ticks;
 }
 
+static int exec_coproc(Arm2 *c, uint32_t i, uint32_t *cyc);
+
 int arm2_step(Arm2 *c)
 {
     /* Interrupt: campionati tra un'istruzione e l'altra. R14 = PC + 4 */
@@ -618,8 +621,11 @@ int arm2_step(Arm2 *c)
                 cyc = CYC_EXCEPTION;
                 break;
             }
-            /* fallthrough: CDP/MRC/MCR senza coprocessore */
-        default:                                       /* LDC/STC, ecc. */
+            /* fallthrough: CDP/MRC/MCR */
+        case 6:                                        /* LDC/STC */
+            if (exec_coproc(c, i, &cyc)) break;
+            /* fallthrough: nessun coprocessore la prende */
+        default:
         undefined:
             take_exception(c, ARM_VEC_UNDEF, ARM_MODE_SVC, c->r[15], 0);
             cyc = CYC_EXCEPTION;
@@ -627,6 +633,72 @@ int arm2_step(Arm2 *c)
         }
     }
     return account(c, cyc, pc);
+}
+
+/* ------------------------------------------------------------------ */
+/* la FPA10 sul bus dei coprocessori                                  */
+/* ------------------------------------------------------------------ */
+
+static uint32_t fpa_get_reg(void *ctx, int n)
+{
+    Arm2 *c = ctx;
+    return n == 15 ? (c->r[15] + 4) & ARM_PC_MASK : c->r[n];   /* istruzione + 8 */
+}
+
+static void fpa_set_reg(void *ctx, int n, uint32_t v)
+{
+    Arm2 *c = ctx;
+    if (n < 15) c->r[n] = v;
+}
+
+static void fpa_set_flags(void *ctx, uint32_t nzcv)
+{
+    Arm2 *c = ctx;
+    c->r[15] = (c->r[15] & 0x0FFFFFFFu) | (nzcv & 0xF0000000u);
+}
+
+static int fpa_read32(void *ctx, uint32_t addr, uint32_t *v)
+{
+    Arm2 *c = ctx;
+    int abort = 0;
+    if (addr & ~0x03FFFFFFu) return FPA_ADDR_EXC;
+    *v = c->bus.read32(c->bus.ctx, addr, &abort);
+    return abort ? FPA_DATA_ABORT : FPA_DONE;
+}
+
+static int fpa_write32(void *ctx, uint32_t addr, uint32_t v)
+{
+    Arm2 *c = ctx;
+    int abort = 0;
+    if (addr & ~0x03FFFFFFu) return FPA_ADDR_EXC;
+    c->bus.write32(c->bus.ctx, addr, v, &abort);
+    return abort ? FPA_DATA_ABORT : FPA_DONE;
+}
+
+static int fpa_privileged(void *ctx) { return arm2_mode((const Arm2 *)ctx) != ARM_MODE_USR; }
+
+/* un'istruzione di coprocessore: 0 se la FPA non la prende (non definita),
+   se no i cicli */
+static int exec_coproc(Arm2 *c, uint32_t i, uint32_t *cyc)
+{
+    FpaHost h = { c, fpa_get_reg, fpa_set_reg, fpa_set_flags, fpa_read32, fpa_write32, fpa_privileged };
+    int n = 1;
+    if (!c->fpa) return 0;
+    switch (fpa_exec(c->fpa, i, &h, &n)) {
+    case FPA_DONE:
+        *cyc = CYC(1, 0, n, 1);             /* la CPU aspetta la FPA */
+        return 1;
+    case FPA_DATA_ABORT:
+        take_exception(c, ARM_VEC_DABORT, ARM_MODE_SVC, r15_plus(c, 4), 0);
+        *cyc = CYC_EXCEPTION;
+        return 1;
+    case FPA_ADDR_EXC:
+        take_exception(c, ARM_VEC_ADDRESS, ARM_MODE_SVC, r15_plus(c, 4), 0);
+        *cyc = CYC_EXCEPTION;
+        return 1;
+    default:                                /* rimbalzo o coprocessore assente */
+        return 0;
+    }
 }
 
 uint64_t arm2_run(Arm2 *c, uint64_t max_cycles)

@@ -700,6 +700,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--mhz") && i + 1 < argc) mhz = atof(argv[++i]);
         else if (!strcmp(argv[i], "--cmos") && i + 1 < argc) cfg.cmos_path = argv[++i];
         else if (!strcmp(argv[i], "--hostfs") && i + 1 < argc) cfg.hostfs_dir = argv[++i];
+        else if (!strcmp(argv[i], "--fpa")) cfg.fpa = 1;
         else if (!strcmp(argv[i], "--right-menu")) app.right_menu = 1;
         else if (!strcmp(argv[i], "--riscpc")) force_rpc = 1;
         else if (!strcmp(argv[i], "--arm710")) arm710 = 1;
@@ -722,6 +723,7 @@ int main(int argc, char **argv)
         if (vram < 0) vram = mc.vram_mb;
         arm710 = mc.cpu == CPU_ARM710;
         strongarm = mc.cpu == CPU_SA110;
+        cfg.fpa = mc.fpa;
         snprintf(app.rom_name, sizeof app.rom_name, "%s", mc.rom_name);
     } else {
         if (!cfg.rom_path) {

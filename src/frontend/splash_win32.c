@@ -144,13 +144,13 @@ static void ini_put_int(const char *key, int v)
 /* la finestra                                                        */
 /* ------------------------------------------------------------------ */
 
-enum { ID_ARCHIE = 200, ID_RISCPC, ID_ROM, ID_CPU, ID_RAM, ID_VRAM, ID_VRAM_LABEL };
+enum { ID_ARCHIE = 200, ID_RISCPC, ID_ROM, ID_CPU, ID_RAM, ID_VRAM, ID_VRAM_LABEL, ID_FPA };
 
 static const int ram_archie[] = { 1, 2, 4 };
 static const int ram_riscpc[] = { 4, 8, 16, 32, 64 };
 
 typedef struct Splash {
-    HWND  wnd, archie, riscpc, rom, cpu, ram, vram, vram_label, start;
+    HWND  wnd, archie, riscpc, rom, cpu, ram, vram, vram_label, fpa, start;
     HFONT font, big;
     int   done, ok, riscpc_on;
     int   rom_index[128];              /* voce della lista -> indice in roms[] */
@@ -212,6 +212,9 @@ static void fill_lists(void)
     EnableWindow(sp.vram, rpc);
     EnableWindow(sp.vram_label, rpc);
     EnableWindow(sp.cpu, rpc);
+    /* la FPA10 c'era per gli Archimedes (A540, A5000); sul Risc PC no */
+    SendMessageA(sp.fpa, BM_SETCHECK, !rpc && ini_int("fpa", 0) ? BST_CHECKED : BST_UNCHECKED, 0);
+    EnableWindow(sp.fpa, !rpc);
     EnableWindow(sp.start, n > 0);
 }
 
@@ -244,11 +247,13 @@ static void splash_accept(void)
     int cs = (int)SendMessageA(sp.cpu, CB_GETCURSEL, 0, 0);
     c->cpu = c->riscpc ? (cs == 2 ? CPU_SA110 : cs == 1 ? CPU_ARM710 : CPU_ARM610) : CPU_ARM2;
     c->vram_mb = c->riscpc ? (int)SendMessageA(sp.vram, CB_GETCURSEL, 0, 0) : 0;
+    c->fpa = !c->riscpc && SendMessageA(sp.fpa, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
     ini_put_int("riscpc", c->riscpc);
     WritePrivateProfileStringA("Machine", c->riscpc ? "rom_riscpc" : "rom_archie", c->rom, ini_path);
     ini_put_int(c->riscpc ? "ram_riscpc" : "ram_archie", c->ram_mb);
     if (c->riscpc) { ini_put_int("cpu", c->cpu); ini_put_int("vram", c->vram_mb); }
+    else ini_put_int("fpa", c->fpa);
     sp.ok = 1;
     sp.done = 1;
 }
@@ -352,6 +357,7 @@ int splash_choose(HINSTANCE inst, MachineChoice *c)
     sp.vram_label = add("STATIC", "VRAM", 0, lx, y + S(3), S(95), S(20), ID_VRAM_LABEL, sp.font);
     sp.vram = add("COMBOBOX", "", CBS_DROPDOWNLIST | WS_TABSTOP, cx, y, S(160), S(200), ID_VRAM, sp.font);
 
+    sp.fpa = add("BUTTON", "FPA10 floating point unit", BS_AUTOCHECKBOX | WS_TABSTOP, lx, S(289), S(228), S(22), ID_FPA, sp.font);
     sp.start = add("BUTTON", "Start", BS_DEFPUSHBUTTON | WS_TABSTOP | WS_GROUP, S(258), S(286), S(92), S(28), IDOK, sp.font);
     add("BUTTON", "Quit", BS_PUSHBUTTON | WS_TABSTOP, S(358), S(286), S(92), S(28), IDCANCEL, sp.font);
 #undef S

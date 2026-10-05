@@ -22,6 +22,7 @@ endif()
 add_library(armcore STATIC
     src/cpu/arm2.c
     src/cpu/arm6.c
+    src/cpu/fpa.c
     src/cpu/arm2_disasm.c
     src/core/bus.c
     src/core/hostdir.c
@@ -41,6 +42,8 @@ target_link_libraries(armemu armcore)
 # Test della CPU
 add_executable(test_arm2 tests/test_arm2.c)
 target_link_libraries(test_arm2 armcore)
+add_executable(test_fpa tests/test_fpa.c)
+target_link_libraries(test_fpa armcore)
 
 # Motore per il confronto con Unicorn (tests/diff_unicorn.py)
 add_executable(arm2_oracle tests/arm2_oracle.c)

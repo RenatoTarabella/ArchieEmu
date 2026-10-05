@@ -59,6 +59,8 @@ enum {
 #define ARM6_ID_ARM610 0x41560610u
 #define ARM6_ID_ARM710 0x41007100u
 #define ARM6_ID_SA110  0x4401A102u   /* StrongARM: ARMv4 (mezze parole, moltiplicazioni lunghe) */
+#define ARM6_ID_ARM7500   0x41027100u   /* A7000: core ARMv3 come l'ARM710 */
+#define ARM6_ID_ARM7500FE 0x41077100u   /* A7000+: lo stesso con la FPA11 */
 
 /* TLB software: una voce per blocco da 1 KB (la granularita' delle
    sottopagine), mappata direttamente */

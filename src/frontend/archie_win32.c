@@ -688,7 +688,7 @@ int main(int argc, char **argv)
 {
     ArchieConfig cfg = { NULL, 4, NULL, { NULL, NULL }, 8, NULL };
     RiscPcConfig rcfg = { 0 };
-    int force_rpc = 0, arm710 = 0, strongarm = 0, choose = 0, vram = -1;
+    int force_rpc = 0, arm710 = 0, strongarm = 0, choose = 0, vram = -1, a7000 = 0;
     double mhz = 0;
     uint32_t ram = 0;
     for (int i = 1; i < argc; i++) {
@@ -705,6 +705,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--riscpc")) force_rpc = 1;
         else if (!strcmp(argv[i], "--arm710")) arm710 = 1;
         else if (!strcmp(argv[i], "--strongarm")) strongarm = 1;
+        else if (!strcmp(argv[i], "--a7000plus")) { a7000 = 1; force_rpc = 1; }
         else if (!strcmp(argv[i], "--choose")) choose = 1;
         else if (argv[i][0] != '-' && !cfg.floppy[0]) cfg.floppy[0] = argv[i];   /* file aperto con l'eseguibile */
     }
@@ -724,6 +725,7 @@ int main(int argc, char **argv)
         arm710 = mc.cpu == CPU_ARM710;
         strongarm = mc.cpu == CPU_SA110;
         cfg.fpa = mc.fpa;
+        a7000 = mc.a7000;
         snprintf(app.rom_name, sizeof app.rom_name, "%s", mc.rom_name);
     } else {
         if (!cfg.rom_path) {
@@ -740,6 +742,15 @@ int main(int argc, char **argv)
         if (v) splash_rom_name(v, app.rom_name, sizeof app.rom_name);
         else   snprintf(app.rom_name, sizeof app.rom_name, "%s", base_name(cfg.rom_path));
     }
+    if (!cfg.cmos_path && a7000) {
+        /* A7000+: CMOS a parte (mouse PS/2); la prima volta, copia di quella
+           della stessa ROM sul Risc PC, cosi' eredita disco e avvio */
+        char rpc_cmos[MAX_PATH];
+        snprintf(cmos_buf, sizeof cmos_buf, "%s.a7000.cmos", cfg.rom_path);
+        snprintf(rpc_cmos, sizeof rpc_cmos, "%s.cmos", cfg.rom_path);
+        CopyFileA(rpc_cmos, cmos_buf, TRUE);    /* TRUE: non sovrascrive */
+        cfg.cmos_path = cmos_buf;
+    }
     if (!cfg.cmos_path) {
         /* la CMOS si salva accanto alla ROM, una per ogni versione */
         snprintf(cmos_buf, sizeof cmos_buf, "%s.cmos", cfg.rom_path);
@@ -754,7 +765,8 @@ int main(int argc, char **argv)
         rcfg.vram_mb = vram >= 0 ? (uint32_t)vram : 2;
         rcfg.arm710 = arm710;
         rcfg.strongarm = strongarm;
-        rcfg.mhz = mhz > 0 ? mhz : strongarm ? 100 : arm710 ? 40 : 30;
+        rcfg.machine = a7000 ? MACHINE_A7000PLUS : MACHINE_RISCPC;
+        rcfg.mhz = mhz > 0 ? mhz : a7000 ? 48 : strongarm ? 100 : arm710 ? 40 : 30;
         rcfg.hostfs_dir = cfg.hostfs_dir ? cfg.hostfs_dir : hostfs_folder();
         app.mhz = rcfg.mhz;
         if (!riscpc_create(&app.r, &rcfg, err, sizeof err)) {

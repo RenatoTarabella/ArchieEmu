@@ -27,6 +27,7 @@ typedef struct Vidc20 {
     uint32_t stereo[8];
     uint32_t sound_freq, sound_ctrl;
     uint32_t ext, fsyn, control, datactl;
+    double   ref_hz;             /* clock di riferimento: 24 MHz (Risc PC), 32 MHz (ARM7500); 0 = 24 */
 } Vidc20;
 
 void vidc20_reset(Vidc20 *v);

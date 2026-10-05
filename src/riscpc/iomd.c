@@ -18,12 +18,24 @@ void iomd_init(Iomd *m, const IomdHooks *hooks)
     iomd_reset(m, 0);
 }
 
+void iomd_set_type(Iomd *m, int type) { m->type = type; }
+
 void iomd_reset(Iomd *m, ArcTime now)
 {
     IomdHooks h = m->hooks;
+    int type = m->type;
     memset(m, 0, sizeof *m);
     m->hooks = h;
+    m->type = type;
     m->iocr = 0xFF;
+    if (type != IOMD_RISCPC) {
+        /* nEVENT2 deve leggere 1: a 0 RISC OS si crede sul portatile
+           (Stork) e cerca il suo microcontrollore della batteria */
+        m->irqd = 0x18;
+        m->vrefcr = 1;
+        m->atod[0] = 0x0F;
+        m->romcr[0] = m->romcr[1] = 0x40;
+    }
     m->irqa = 0x80 | 0x10;                 /* forzato + accensione */
     m->irqb = 0;
     m->fiq = 0x80;
@@ -39,38 +51,71 @@ static ArcTime timer_period(const IomdTimer *t)
     return (ArcTime)(t->latch ? t->latch : 0x10000) * TIMER_TICK;
 }
 
-/* tastiera: i bit 6 e 7 dell'IRQ B seguono lo stato del canale */
-static void kbd_lines(Iomd *m)
+/* PS/2: la tastiera sui bit 6 e 7 dell'IRQ B, il mouse sui bit 1 e 0
+   dell'IRQ D (trasmettitore vuoto, byte ricevuto) */
+static void ps2_lines(Iomd *m)
 {
-    int ena = (m->kbd_cr & 0x08) != 0;
-    m->irqb = (uint8_t)((m->irqb & 0x3F) | (ena && !m->kbd_tx_busy ? 0x40 : 0)
-                        | (ena && m->kbd_rx_full ? 0x80 : 0));
+    const Ps2Port *k = &m->ps2[0], *ms = &m->ps2[1];
+    int ena = (k->cr & 0x08) != 0;
+    m->irqb = (uint8_t)((m->irqb & 0x3F) | (ena && !k->tx_busy ? 0x40 : 0) | (ena && k->rx_full ? 0x80 : 0));
+    ena = (ms->cr & 0x08) != 0;
+    m->irqd = (uint8_t)((m->irqd & ~3) | (ena && !ms->tx_busy ? 0x02 : 0) | (ena && ms->rx_full ? 0x01 : 0));
 }
 
-static void kbd_update(Iomd *m, ArcTime now)
+static void ps2_update(Iomd *m, int n, ArcTime now)
 {
-    if (m->kbd_tx_busy && now >= m->kbd_tx_done) {
-        m->kbd_tx_busy = 0;
-        if (m->hooks.to_keyboard) m->hooks.to_keyboard(m->hooks.ctx, m->kbd_tx);
-        if (m->kbd_rx_next < now + ARC_US(200)) m->kbd_rx_next = now + ARC_US(200);
+    Ps2Port *p = &m->ps2[n];
+    void (*to)(void *, uint8_t) = n ? m->hooks.to_mouse : m->hooks.to_keyboard;
+    int (*from)(void *, uint8_t *) = n ? m->hooks.from_mouse : m->hooks.from_keyboard;
+    if (p->tx_busy && now >= p->tx_done) {
+        p->tx_busy = 0;
+        if (to) to(m->hooks.ctx, p->tx);
+        if (p->rx_next < now + ARC_US(200)) p->rx_next = now + ARC_US(200);
     }
-    /* un byte dalla tastiera solo dopo che il computer ha letto il precedente */
-    if ((m->kbd_cr & 0x08) && !m->kbd_rx_full && now >= m->kbd_rx_next && m->hooks.from_keyboard) {
+    /* un byte dal dispositivo solo dopo che il computer ha letto il precedente */
+    if ((p->cr & 0x08) && !p->rx_full && now >= p->rx_next && from) {
         uint8_t b;
-        if (m->hooks.from_keyboard(m->hooks.ctx, &b)) {
-            m->kbd_rx = b;
-            m->kbd_rx_full = 1;
-            m->kbd_rx_next = now + KBD_BYTE;
+        if (from(m->hooks.ctx, &b)) {
+            p->rx = b;
+            p->rx_full = 1;
+            p->rx_next = now + KBD_BYTE;
         } else {
-            m->kbd_rx_next = now + ARC_US(1000);
+            p->rx_next = now + ARC_US(1000);
         }
     }
-    kbd_lines(m);
+}
+
+static uint32_t ps2_read_cr(const Ps2Port *p)
+{
+    uint8_t par = 1;                            /* parita' dispari */
+    for (uint8_t x = p->rx; x; x >>= 1) par ^= x & 1;
+    return (uint32_t)((p->cr & 0x08) | (p->tx_busy ? 0x40 : 0x80) | (p->rx_full ? 0x20 : 0) | (par ? 0x04 : 0) | 0x03);
+}
+
+static void ps2_write_data(Iomd *m, int n, uint8_t b, ArcTime now)
+{
+    Ps2Port *p = &m->ps2[n];
+    if (p->cr & 0x08) {
+        p->tx = b;
+        p->tx_busy = 1;
+        p->tx_done = now + KBD_BYTE;
+    }
+    ps2_lines(m);
+}
+
+static void ps2_write_cr(Iomd *m, int n, uint8_t b)
+{
+    Ps2Port *p = &m->ps2[n];
+    p->cr = b & 0x08;
+    if (!(b & 0x08)) { p->tx_busy = 0; p->rx_full = 0; }
+    ps2_lines(m);
 }
 
 void iomd_update(Iomd *m, ArcTime now)
 {
-    kbd_update(m, now);
+    ps2_update(m, 0, now);
+    if (m->type != IOMD_RISCPC) ps2_update(m, 1, now);
+    ps2_lines(m);
     for (int i = 0; i < 2; i++) {
         IomdTimer *t = &m->timer[i];
         if (!t->running) continue;
@@ -91,8 +136,11 @@ ArcTime iomd_next_event(const Iomd *m, ArcTime now)
         ArcTime e = t->start + timer_period(t);
         if (e < next) next = e;
     }
-    if (m->kbd_tx_busy && m->kbd_tx_done < next) next = m->kbd_tx_done;
-    if ((m->kbd_cr & 0x08) && !m->kbd_rx_full && m->kbd_rx_next < next) next = m->kbd_rx_next;
+    for (int n = 0; n < 2; n++) {
+        const Ps2Port *p = &m->ps2[n];
+        if (p->tx_busy && p->tx_done < next) next = p->tx_done;
+        if ((p->cr & 0x08) && !p->rx_full && p->rx_next < next) next = p->rx_next;
+    }
     return next > now ? next : now + 1;
 }
 
@@ -166,17 +214,10 @@ uint32_t iomd_read(Iomd *m, uint32_t off, ArcTime now, int *known)
         return (uint32_t)((m->iocr & in & 0x3F) | (m->flyback ? 0x80 : 0));
     }
     case 0x004:
-        m->kbd_rx_full = 0;
-        kbd_lines(m);
-        return m->kbd_rx;
-    case 0x008:
-    {
-        /* bit 2: il bit di parita' (dispari) arrivato col byte */
-        uint32_t ones = 0;
-        for (uint8_t x = m->kbd_rx; x; x &= (uint8_t)(x - 1)) ones++;
-        return (uint32_t)(m->kbd_cr | (m->kbd_tx_busy ? 0x40 : 0x80) | (m->kbd_rx_full ? 0x20 : 0)
-                          | (ones & 1 ? 0 : 0x04) | 0x03);
-    }
+        m->ps2[0].rx_full = 0;
+        ps2_lines(m);
+        return m->ps2[0].rx;
+    case 0x008: return ps2_read_cr(&m->ps2[0]);  /* bit 2: la parita' (dispari) del byte */
     case 0x010: return m->irqa;
     case 0x014: return m->irqa & m->irqa_mask;
     case 0x018: return m->irqa_mask;
@@ -193,8 +234,8 @@ uint32_t iomd_read(Iomd *m, uint32_t off, ArcTime now, int *known)
     case 0x088: return m->dramcr;
     case 0x08C: return m->vrefcr;
     case 0x090: return m->fsize;
-    case 0x094: return IOMD_ID & 0xFF;
-    case 0x098: return IOMD_ID >> 8;
+    case 0x094: return m->type == IOMD_ARM7500FE ? 0x7C : m->type == IOMD_ARM7500 ? 0x98 : 0xE7;
+    case 0x098: return m->type == IOMD_ARM7500FE ? 0xAA : m->type == IOMD_ARM7500 ? 0x5B : 0xD4;
     case 0x09C: return 0;                          /* versione */
     case 0x0A0: return m->mouse_x;
     case 0x0A4: return m->mouse_y;
@@ -207,7 +248,7 @@ uint32_t iomd_read(Iomd *m, uint32_t off, ArcTime now, int *known)
     case 0x1D4: return m->vidend;
     case 0x1D8: return m->vidstart;
     case 0x1DC: return m->vidinit;
-    case 0x1E0: return m->vidcr;
+    case 0x1E0: return m->type == IOMD_RISCPC ? m->vidcr : (m->vidcr & 0xA0) | 0x50;   /* video nella DRAM */
     case 0x180: return m->sd_cur[0];
     case 0x184: return m->sd_end[0];
     case 0x188: return m->sd_cur[1];
@@ -218,7 +259,32 @@ uint32_t iomd_read(Iomd *m, uint32_t off, ArcTime now, int *known)
     case 0x1F4: return m->dma_irq & m->dma_mask;
     case 0x1F8: return m->dma_mask;
     default:
-        if (off >= 0x100 && off < 0x1C0) return m->dma_regs[(off - 0x100) >> 2];
+        if (m->type != IOMD_RISCPC) {
+            switch (off) {
+            case 0x00C: return 0;                  /* IOLINES: bit 0 = 0, monitor VGA */
+            case 0x01C: return m->susmode;
+            case 0x03C: return m->clkctl;
+            case 0x060: case 0x064: return 0;      /* IRQ C: nessuna linea attiva */
+            case 0x068: return m->irqc_mask;
+            case 0x06C: return m->vidmux;
+            case 0x070: return m->irqd;
+            case 0x074: return m->irqd & m->irqd_mask;
+            case 0x078: return m->irqd_mask;
+            case 0x0A8:
+                m->ps2[1].rx_full = 0;
+                ps2_lines(m);
+                return m->ps2[1].rx;
+            case 0x0AC: return ps2_read_cr(&m->ps2[1]);
+            case 0x0CC: return m->astcr;
+            case 0x0D0: return m->dramwid;
+            case 0x0D4: return m->selfref;
+            case 0x1C8: return m->vidcurb;
+            case 0x1E8: return m->vidinitb;
+            default:
+                if (off >= 0x0E0 && off <= 0x0F8) return m->atod[(off - 0x0E0) >> 2];
+                break;
+            }
+        } else if (off >= 0x100 && off < 0x1C0) return m->dma_regs[(off - 0x100) >> 2];
         *known = 0;
         return 0;
     }
@@ -235,19 +301,8 @@ void iomd_write(Iomd *m, uint32_t off, uint32_t v, ArcTime now, int *known)
         m->iocr = b;
         if (m->hooks.lines_write) m->hooks.lines_write(m->hooks.ctx, b);
         break;
-    case 0x004:                                    /* byte verso la tastiera */
-        if (m->kbd_cr & 0x08) {
-            m->kbd_tx = b;
-            m->kbd_tx_busy = 1;
-            m->kbd_tx_done = now + KBD_BYTE;
-        }
-        kbd_lines(m);
-        break;
-    case 0x008:
-        m->kbd_cr = b & 0x08;
-        if (!(b & 0x08)) { m->kbd_tx_busy = 0; m->kbd_rx_full = 0; }
-        kbd_lines(m);
-        break;
+    case 0x004: ps2_write_data(m, 0, b, now); break;   /* byte verso la tastiera */
+    case 0x008: ps2_write_cr(m, 0, b); break;
     case 0x014: m->irqa &= (uint8_t)~(b & 0x7C); break;
     case 0x018: m->irqa_mask = b; break;
     case 0x028: m->irqb_mask = b; break;
@@ -296,8 +351,30 @@ void iomd_write(Iomd *m, uint32_t off, uint32_t v, ArcTime now, int *known)
         sd_irq(m);
         break;
     case 0x1F8: m->dma_mask = b; break;
+    case 0x1F4: break;                             /* (RISC OS ci scrive per uscire dal modo ROM) */
     default:
-        if (off >= 0x100 && off < 0x1C0) { m->dma_regs[(off - 0x100) >> 2] = v; break; }
+        if (m->type != IOMD_RISCPC) {
+            switch (off) {
+            case 0x00C: case 0x02C: return;        /* IOLINES, STOPMODE */
+            case 0x01C: m->susmode = b; return;
+            case 0x03C: m->clkctl = b; return;
+            case 0x064: return;                    /* IRQ C: azzeramento */
+            case 0x068: m->irqc_mask = b; return;
+            case 0x06C: m->vidmux = b; return;
+            case 0x074: return;                    /* IRQ D: livelli, niente da azzerare */
+            case 0x078: m->irqd_mask = b; return;
+            case 0x0A8: ps2_write_data(m, 1, b, now); return;
+            case 0x0AC: ps2_write_cr(m, 1, b); return;
+            case 0x0CC: m->astcr = b; return;
+            case 0x0D0: m->dramwid = b; return;
+            case 0x0D4: m->selfref = b; return;
+            case 0x1C8: m->vidcurb = v; return;
+            case 0x1E8: m->vidinitb = v; return;
+            default:
+                if (off >= 0x0E0 && off <= 0x0F8) { m->atod[(off - 0x0E0) >> 2] = b; return; }
+                break;
+            }
+        } else if (off >= 0x100 && off < 0x1C0) { m->dma_regs[(off - 0x100) >> 2] = v; break; }
         *known = 0;
         break;
     }
@@ -316,7 +393,8 @@ void iomd_set_irqb_line(Iomd *m, uint8_t bit, int level)
 
 int iomd_irq(const Iomd *m)
 {
-    return (m->irqa & m->irqa_mask) || (m->irqb & m->irqb_mask) || (m->dma_irq & m->dma_mask);
+    return (m->irqa & m->irqa_mask) || (m->irqb & m->irqb_mask) || (m->dma_irq & m->dma_mask) ||
+           (m->type != IOMD_RISCPC && (m->irqd & m->irqd_mask));
 }
 
 int iomd_fiq(const Iomd *m)

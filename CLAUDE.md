@@ -186,6 +186,9 @@ type long test lines. The tools for that:
   (`tools/dist/HostFS`, copied into the packages). OS_CheckModeValid only
   compares with the screen memory already allocated, so its "not enough
   memory" does not mean the mode change would fail.
+- A7000+ (`docs/a7000.md`): a Risc PC variant (`MACHINE_A7000PLUS`). RISC OS
+  3.71 tells the machines apart only by the IOMD ID (&AA7C); IRQD must reset
+  to &18 (nEVENT2 high) or the kernel thinks it is the Stork laptop.
 - FPA10 (`src/cpu/fpa.c`, `docs/fpa.md`): executes the common cases in
   hardware and bounces everything else synchronously (FPCR.SB), so the
   FPEmulator 4 support code (FPASC, BSD sources from RISC OS Open) emulates the

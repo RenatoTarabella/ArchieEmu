@@ -21,6 +21,7 @@ typedef struct MachineChoice {
     int  ram_mb;
     int  vram_mb;
     int  fpa;                 /* Archimedes: FPA10 accanto alla CPU */
+    int  a7000;               /* A7000+ (ARM7500FE con la FPA11): riscpc vale 1 */
 } MachineChoice;
 
 /* Versione di RISC OS dal nome del file (ROM311 -> 311), 0 se non e' una ROM

@@ -124,6 +124,7 @@ add_library(riscpccore STATIC
     src/riscpc/iomd.c
     src/riscpc/vidc20.c
     src/riscpc/ps2kbd.c
+    src/riscpc/ps2mouse.c
     src/riscpc/fdc82077.c
     src/riscpc/superio.c
     src/riscpc/ide.c

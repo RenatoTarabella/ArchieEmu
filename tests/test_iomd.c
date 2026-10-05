@@ -119,12 +119,43 @@ static void test_keyboard(void)
     CHECK_EQ(rd(0x08, t) & 0x04, 0);                /* &75: cinque 1 */
 }
 
+/* ARM7500 / ARM7500FE (A7000, A7000+): identita', nEVENT2, mouse PS/2 */
+static uint8_t mouse_in, mouse_out_ready = 1;
+static void m_to(void *c, uint8_t b) { (void)c; mouse_in = b; }
+static int m_from(void *c, uint8_t *b) { (void)c; if (!mouse_out_ready) return 0; *b = 0xFA; mouse_out_ready = 0; return 1; }
+
+static void test_arm7500(void)
+{
+    IomdHooks h = { 0 };
+    h.to_mouse = m_to;
+    h.from_mouse = m_from;
+    iomd_init(&m, &h);
+    iomd_set_type(&m, IOMD_ARM7500FE);
+    iomd_reset(&m, 0);
+    CHECK_EQ(rd(0x94, 0) | rd(0x98, 0) << 8, 0xAA7C);
+    CHECK_EQ(rd(0x70, 0) & 0x18, 0x18);             /* nEVENT1/2 a 1: non e' il portatile */
+    CHECK_EQ(rd(0x1E0, 0) & 0x40, 0x40);            /* VIDCR: video nella DRAM */
+    iomd_set_type(&m, IOMD_ARM7500);
+    iomd_reset(&m, 0);
+    CHECK_EQ(rd(0x94, 0) | rd(0x98, 0) << 8, 0x5B98);
+    wr(0xAC, 0x08, 0);                              /* MSECR: abilita */
+    wr(0x78, 0x01, 0);                              /* IRQD: byte ricevuto */
+    wr(0xA8, 0xFF, 0);                              /* reset del mouse */
+    rd(0xAC, ARC_MS(5));
+    CHECK_EQ(mouse_in, 0xFF);
+    CHECK_EQ(rd(0xAC, ARC_MS(10)) & 0x20, 0x20);    /* un byte arrivato */
+    CHECK_EQ(iomd_irq(&m), 1);
+    CHECK_EQ(rd(0xA8, ARC_MS(10)), 0xFA);
+    CHECK_EQ(iomd_irq(&m), 0);
+}
+
 int main(void)
 {
     test_id_and_irq();
     test_timer();
     test_sound_dma();
     test_keyboard();
+    test_arm7500();
     printf("%d controlli, %d falliti\n", checks, failures);
     return failures ? 1 : 0;
 }

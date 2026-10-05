@@ -2,6 +2,12 @@
  * riscpc.h - La macchina Risc PC (1994) a basso livello: ARM610/710,
  * IOMD, VIDC20, CMOS, con una ROM vera di RISC OS 3.5-3.7.
  *
+ * Anche l'A7000 (ARM7500, 1995) e l'A7000+ (ARM7500FE con la FPA11, 1997):
+ * la stessa scheda con IOMD, VIDC e CPU in un solo chip; niente VRAM (lo
+ * schermo sta nella DRAM), mouse PS/2 sulla seconda porta, clock video di
+ * riferimento a 32 MHz. La stessa ROM di RISC OS 3.71 riconosce la macchina
+ * dall'identificativo dell'IOMD.
+ *
  * Mappa fisica:
  *   &00000000  ROM (2 o 4 MB, ripetuta nei 16 MB del banco 0)
  *   &01000000  ROM di estensione (assente)
@@ -28,7 +34,10 @@
 #include "iomd.h"
 #include "vidc20.h"
 #include "ps2kbd.h"
+#include "ps2mouse.h"
 #include "superio.h"
+
+enum { MACHINE_RISCPC = 0, MACHINE_A7000, MACHINE_A7000PLUS };
 
 typedef struct RiscPcConfig {
     const char *rom_path;
@@ -40,6 +49,7 @@ typedef struct RiscPcConfig {
     int         strongarm;     /* StrongARM SA-110 (ARMv4): 100 MHz equivalenti */
     const char *hostfs_dir;    /* cartella dell'host vista come HostFS (NULL = niente scheda) */
     int         fpa;           /* FPA11 (A7000+); sul Risc PC non esisteva: solo per le prove */
+    int         machine;       /* MACHINE_RISCPC, MACHINE_A7000, MACHINE_A7000PLUS */
 } RiscPcConfig;
 
 /* accesso a un indirizzo che nessun dispositivo riconosce (per il debug) */
@@ -52,7 +62,9 @@ typedef struct RiscPc {
     Vidc20   vidc;
     Cmos     cmos;
     Ps2Kbd   kbd;
+    Ps2Mouse mouse;              /* A7000: sulla seconda porta PS/2 */
     SuperIo  sio;
+    int      machine;
 
     uint8_t *rom, *ram, *vram;
     uint32_t rom_size, ram_size, vram_size;

@@ -41,7 +41,7 @@ int vidc20_log2bpp(const Vidc20 *v)
 
 int vidc20_timing(const Vidc20 *v, Vidc20Timing *t)
 {
-    double ref = 24e6;
+    double ref = v->ref_hz > 0 ? v->ref_hz : 24e6;
     int sel = (int)(v->control & 3);
     double vco = ref;
     if (sel == 0) {                              /* VCO del sintetizzatore */

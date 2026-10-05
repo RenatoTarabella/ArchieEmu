@@ -144,15 +144,15 @@ static void ini_put_int(const char *key, int v)
 /* la finestra                                                        */
 /* ------------------------------------------------------------------ */
 
-enum { ID_ARCHIE = 200, ID_RISCPC, ID_ROM, ID_CPU, ID_RAM, ID_VRAM, ID_VRAM_LABEL, ID_FPA };
+enum { ID_ARCHIE = 200, ID_RISCPC, ID_ROM, ID_CPU, ID_RAM, ID_VRAM, ID_VRAM_LABEL, ID_FPA, ID_A7000 };
 
 static const int ram_archie[] = { 1, 2, 4 };
 static const int ram_riscpc[] = { 4, 8, 16, 32, 64 };
 
 typedef struct Splash {
-    HWND  wnd, archie, riscpc, rom, cpu, ram, vram, vram_label, fpa, start;
+    HWND  wnd, archie, riscpc, a7000, rom, cpu, ram, vram, vram_label, fpa, start;
     HFONT font, big;
-    int   done, ok, riscpc_on;
+    int   done, ok, riscpc_on, a7000_on;   /* a7000_on: anche riscpc_on (stesse ROM) */
     int   rom_index[128];              /* voce della lista -> indice in roms[] */
     MachineChoice *c;
 } Splash;
@@ -161,26 +161,30 @@ static Splash sp;
 
 static void fill_lists(void)
 {
-    int rpc = sp.riscpc_on;
+    int rpc = sp.riscpc_on, a7k = sp.a7000_on;
     char want[MAX_PATH];
-    ini_str(rpc ? "rom_riscpc" : "rom_archie", want, sizeof want);
+    ini_str(a7k ? "rom_a7000" : rpc ? "rom_riscpc" : "rom_archie", want, sizeof want);
 
     SendMessageA(sp.rom, CB_RESETCONTENT, 0, 0);
     int sel = -1, n = 0, fallback = -1;
     for (int i = 0; i < nroms; i++) {
         if (roms[i].riscpc != rpc) continue;
+        if (a7k && roms[i].version < 371) continue;    /* l'A7000+ vuole RISC OS 3.71 */
         SendMessageA(sp.rom, CB_ADDSTRING, 0, (LPARAM)roms[i].label);
         sp.rom_index[n] = i;
         if (!_stricmp(roms[i].path, want)) sel = n;
         /* predefinite: 3.11 sull'Archimedes, 3.50 sul Risc PC */
-        if (roms[i].version == (rpc ? 350 : 311) && fallback < 0) fallback = n;
+        if (roms[i].version == (a7k ? 371 : rpc ? 350 : 311) && fallback < 0) fallback = n;
         n++;
     }
     if (sel < 0) sel = fallback >= 0 ? fallback : n - 1;
     SendMessageA(sp.rom, CB_SETCURSEL, (WPARAM)sel, 0);
 
     SendMessageA(sp.cpu, CB_RESETCONTENT, 0, 0);
-    if (rpc) {
+    if (a7k) {
+        SendMessageA(sp.cpu, CB_ADDSTRING, 0, (LPARAM)"ARM7500FE, 48 MHz, with FPA11 FPU");
+        SendMessageA(sp.cpu, CB_SETCURSEL, 0, 0);
+    } else if (rpc) {
         SendMessageA(sp.cpu, CB_ADDSTRING, 0, (LPARAM)"ARM610, 30 MHz (Risc PC 600)");
         SendMessageA(sp.cpu, CB_ADDSTRING, 0, (LPARAM)"ARM710, 40 MHz (Risc PC 700)");
         SendMessageA(sp.cpu, CB_ADDSTRING, 0, (LPARAM)"StrongARM SA-110 (RISC OS 3.7 only)");
@@ -193,7 +197,7 @@ static void fill_lists(void)
 
     SendMessageA(sp.ram, CB_RESETCONTENT, 0, 0);
     const int *ram = rpc ? ram_riscpc : ram_archie;
-    int nram = rpc ? 5 : 3, want_ram = ini_int(rpc ? "ram_riscpc" : "ram_archie", rpc ? 16 : 4), rsel = nram - 1;
+    int nram = rpc ? 5 : 3, want_ram = ini_int(a7k ? "ram_a7000" : rpc ? "ram_riscpc" : "ram_archie", rpc ? 16 : 4), rsel = nram - 1;
     if (rpc && want_ram == 0) want_ram = 16;
     for (int i = 0; i < nram; i++) {
         char b[32];
@@ -209,20 +213,24 @@ static void fill_lists(void)
     SendMessageA(sp.vram, CB_ADDSTRING, 0, (LPARAM)"2 MB");
     int v = ini_int("vram", 2);
     SendMessageA(sp.vram, CB_SETCURSEL, (WPARAM)(v >= 0 && v <= 2 ? v : 2), 0);
-    EnableWindow(sp.vram, rpc);
-    EnableWindow(sp.vram_label, rpc);
-    EnableWindow(sp.cpu, rpc);
+    if (a7k) SendMessageA(sp.vram, CB_SETCURSEL, 0, 0);    /* schermo nella DRAM */
+    EnableWindow(sp.vram, rpc && !a7k);
+    EnableWindow(sp.vram_label, rpc && !a7k);
+    EnableWindow(sp.cpu, rpc && !a7k);
     /* la FPA10 c'era per gli Archimedes (A540, A5000); sul Risc PC no */
     SendMessageA(sp.fpa, BM_SETCHECK, !rpc && ini_int("fpa", 0) ? BST_CHECKED : BST_UNCHECKED, 0);
     EnableWindow(sp.fpa, !rpc);
     EnableWindow(sp.start, n > 0);
 }
 
-static void choose(int rpc)
+/* 0 Archimedes, 1 Risc PC, 2 A7000+ */
+static void choose(int machine)
 {
-    sp.riscpc_on = rpc;
-    SendMessageA(sp.archie, BM_SETCHECK, rpc ? BST_UNCHECKED : BST_CHECKED, 0);
-    SendMessageA(sp.riscpc, BM_SETCHECK, rpc ? BST_CHECKED : BST_UNCHECKED, 0);
+    sp.riscpc_on = machine >= 1;
+    sp.a7000_on = machine == 2;
+    SendMessageA(sp.archie, BM_SETCHECK, machine == 0 ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageA(sp.riscpc, BM_SETCHECK, machine == 1 ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageA(sp.a7000, BM_SETCHECK, machine == 2 ? BST_CHECKED : BST_UNCHECKED, 0);
     fill_lists();
 }
 
@@ -233,26 +241,28 @@ static void splash_accept(void)
     if (item < 0) return;
     const RomEntry *r = &roms[sp.rom_index[item]];
     /* lo StrongARM vuole RISC OS 3.7: con le ROM precedenti non parte (come sul vero) */
-    if (sp.riscpc_on && SendMessageA(sp.cpu, CB_GETCURSEL, 0, 0) == 2 && r->version < 370) {
+    if (sp.riscpc_on && !sp.a7000_on && SendMessageA(sp.cpu, CB_GETCURSEL, 0, 0) == 2 && r->version < 370) {
         MessageBoxA(sp.wnd, "The StrongARM needs RISC OS 3.7: RISC OS 3.5 and 3.6 do not run on it, "
                     "as on the real Risc PC.\n\nChoose RISC OS 3.70 or 3.71, or an ARM610/ARM710 processor.",
                     "ArchieEmu", MB_ICONINFORMATION);
         return;
     }
     c->riscpc = sp.riscpc_on;
+    c->a7000 = sp.a7000_on;
     snprintf(c->rom, sizeof c->rom, "%s", r->path);
     splash_rom_name(r->version, c->rom_name, sizeof c->rom_name);
     int ri = (int)SendMessageA(sp.ram, CB_GETCURSEL, 0, 0);
     c->ram_mb = c->riscpc ? ram_riscpc[ri < 0 ? 2 : ri] : ram_archie[ri < 0 ? 2 : ri];
     int cs = (int)SendMessageA(sp.cpu, CB_GETCURSEL, 0, 0);
-    c->cpu = c->riscpc ? (cs == 2 ? CPU_SA110 : cs == 1 ? CPU_ARM710 : CPU_ARM610) : CPU_ARM2;
-    c->vram_mb = c->riscpc ? (int)SendMessageA(sp.vram, CB_GETCURSEL, 0, 0) : 0;
+    c->cpu = c->a7000 ? CPU_ARM710 : c->riscpc ? (cs == 2 ? CPU_SA110 : cs == 1 ? CPU_ARM710 : CPU_ARM610) : CPU_ARM2;
+    c->vram_mb = c->riscpc && !c->a7000 ? (int)SendMessageA(sp.vram, CB_GETCURSEL, 0, 0) : 0;
     c->fpa = !c->riscpc && SendMessageA(sp.fpa, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
     ini_put_int("riscpc", c->riscpc);
-    WritePrivateProfileStringA("Machine", c->riscpc ? "rom_riscpc" : "rom_archie", c->rom, ini_path);
-    ini_put_int(c->riscpc ? "ram_riscpc" : "ram_archie", c->ram_mb);
-    if (c->riscpc) { ini_put_int("cpu", c->cpu); ini_put_int("vram", c->vram_mb); }
+    ini_put_int("machine", c->a7000 ? 2 : c->riscpc);
+    WritePrivateProfileStringA("Machine", c->a7000 ? "rom_a7000" : c->riscpc ? "rom_riscpc" : "rom_archie", c->rom, ini_path);
+    ini_put_int(c->a7000 ? "ram_a7000" : c->riscpc ? "ram_riscpc" : "ram_archie", c->ram_mb);
+    if (c->riscpc && !c->a7000) { ini_put_int("cpu", c->cpu); ini_put_int("vram", c->vram_mb); }
     else ini_put_int("fpa", c->fpa);
     sp.ok = 1;
     sp.done = 1;
@@ -265,6 +275,7 @@ static LRESULT CALLBACK splash_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         switch (LOWORD(wp)) {
         case ID_ARCHIE: choose(0); return 0;
         case ID_RISCPC: choose(1); return 0;
+        case ID_A7000:  choose(2); return 0;
         case IDOK:      splash_accept(); return 0;
         case IDCANCEL:  sp.done = 1; return 0;
         default: break;
@@ -298,8 +309,11 @@ int splash_choose(HINSTANCE inst, MachineChoice *c)
 {
     ini_init();
     scan_roms();
-    int have[2] = { 0, 0 };
-    for (int i = 0; i < nroms; i++) have[roms[i].riscpc] = 1;
+    int have[3] = { 0, 0, 0 };
+    for (int i = 0; i < nroms; i++) {
+        have[roms[i].riscpc] = 1;
+        if (roms[i].riscpc && roms[i].version >= 371) have[2] = 1;
+    }
     if (!have[0] && !have[1]) {
         MessageBoxA(NULL, "No RISC OS ROMs found.\n\nPut the ROM images in a folder called \"roms\" "
                     "next to the program (for example roms\\1. Major\\ROM311).", "ArchieEmu", MB_ICONERROR);
@@ -325,7 +339,7 @@ int splash_choose(HINSTANCE inst, MachineChoice *c)
     sp.font = CreateFontA(-S(13), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, "Segoe UI");
     sp.big = CreateFontA(-S(24), 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, "Segoe UI");
 
-    RECT r = { 0, 0, S(470), S(330) };
+    RECT r = { 0, 0, S(470), S(354) };
     DWORD style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRect(&r, style, FALSE);
     int ww = r.right - r.left, wh = r.bottom - r.top;
@@ -341,10 +355,13 @@ int splash_choose(HINSTANCE inst, MachineChoice *c)
                     BS_AUTORADIOBUTTON | WS_TABSTOP | WS_GROUP, S(22), S(82), S(430), S(22), ID_ARCHIE, sp.font);
     sp.riscpc = add("BUTTON", "Acorn Risc PC   (ARM6/ARM7/StrongARM, RISC OS 3.5 to 3.7)",
                     BS_AUTORADIOBUTTON, S(22), S(106), S(430), S(22), ID_RISCPC, sp.font);
+    sp.a7000 = add("BUTTON", "Acorn A7000+   (ARM7500FE with FPU, RISC OS 3.71)",
+                   BS_AUTORADIOBUTTON, S(22), S(130), S(430), S(22), ID_A7000, sp.font);
     EnableWindow(sp.archie, have[0]);
     EnableWindow(sp.riscpc, have[1]);
+    EnableWindow(sp.a7000, have[2]);
 
-    int y = S(144), lx = S(22), cx = S(120), cw = S(328), row = S(32);
+    int y = S(168), lx = S(22), cx = S(120), cw = S(328), row = S(32);
     add("STATIC", "RISC OS", 0, lx, y + S(3), S(95), S(20), -1, sp.font);
     sp.rom = add("COMBOBOX", "", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP | WS_GROUP, cx, y, cw, S(300), ID_ROM, sp.font);
     y += row;
@@ -357,14 +374,14 @@ int splash_choose(HINSTANCE inst, MachineChoice *c)
     sp.vram_label = add("STATIC", "VRAM", 0, lx, y + S(3), S(95), S(20), ID_VRAM_LABEL, sp.font);
     sp.vram = add("COMBOBOX", "", CBS_DROPDOWNLIST | WS_TABSTOP, cx, y, S(160), S(200), ID_VRAM, sp.font);
 
-    sp.fpa = add("BUTTON", "FPA10 floating point unit", BS_AUTOCHECKBOX | WS_TABSTOP, lx, S(289), S(228), S(22), ID_FPA, sp.font);
-    sp.start = add("BUTTON", "Start", BS_DEFPUSHBUTTON | WS_TABSTOP | WS_GROUP, S(258), S(286), S(92), S(28), IDOK, sp.font);
-    add("BUTTON", "Quit", BS_PUSHBUTTON | WS_TABSTOP, S(358), S(286), S(92), S(28), IDCANCEL, sp.font);
+    sp.fpa = add("BUTTON", "FPA10 floating point unit", BS_AUTOCHECKBOX | WS_TABSTOP, lx, S(313), S(228), S(22), ID_FPA, sp.font);
+    sp.start = add("BUTTON", "Start", BS_DEFPUSHBUTTON | WS_TABSTOP | WS_GROUP, S(258), S(310), S(92), S(28), IDOK, sp.font);
+    add("BUTTON", "Quit", BS_PUSHBUTTON | WS_TABSTOP, S(358), S(310), S(92), S(28), IDCANCEL, sp.font);
 #undef S
 
-    int rpc = ini_int("riscpc", 0) ? 1 : 0;
-    if (!have[rpc]) rpc = !rpc;
-    choose(rpc);
+    int machine = ini_int("machine", ini_int("riscpc", 0) ? 1 : 0);
+    if (machine < 0 || machine > 2 || !have[machine]) machine = have[0] ? 0 : 1;
+    choose(machine);
     ShowWindow(sp.wnd, SW_SHOW);
     SetForegroundWindow(sp.wnd);
     SetFocus(sp.start);

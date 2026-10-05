@@ -124,8 +124,9 @@ static uint32_t io_read(RiscPc *m, uint32_t a, int size)
         update_lines(m);
         reschedule(m, now);
     } else if ((a & 0xFFFF0000u) == 0x03310000u) {
-        /* tasti del mouse, attivi bassi: bit 4 Adjust, 5 Menu, 6 Select */
-        v = (uint32_t)(~m->mouse_buttons & 7u) << 4;
+        /* tasti del mouse, attivi bassi: bit 4 Adjust, 5 Menu, 6 Select
+           (sull'A7000 il mouse e' PS/2: qui niente) */
+        v = m->machine == MACHINE_RISCPC ? (uint32_t)(~m->mouse_buttons & 7u) << 4 : 0;
         known = 1;
     } else if ((a & 0xFFFF0000u) == 0x033C0000u) {
         /* schede: la 0 con il modulo HostFS, le altre leggono &FF (assenti) */
@@ -265,15 +266,19 @@ static uint8_t lines_read(void *ctx)
 
 static void to_keyboard(void *ctx, uint8_t b)    { ps2kbd_rx(&((RiscPc *)ctx)->kbd, b); }
 static int  from_keyboard(void *ctx, uint8_t *b) { return ps2kbd_tx(&((RiscPc *)ctx)->kbd, b); }
+static void to_mouse(void *ctx, uint8_t b)       { ps2mouse_rx(&((RiscPc *)ctx)->mouse, b); }
+static int  from_mouse(void *ctx, uint8_t *b)    { return ps2mouse_tx(&((RiscPc *)ctx)->mouse, b); }
 
 void riscpc_key(RiscPc *m, uint32_t code, int down)
 {
     ps2kbd_key(&m->kbd, code, down);
 }
 
-/* contatori a quadratura dell'IOMD: RISC OS ne legge la differenza */
+/* Risc PC: contatori a quadratura dell'IOMD (RISC OS ne legge la
+   differenza); A7000: mouse PS/2 */
 void riscpc_mouse_move(RiscPc *m, int dx, int dy)
 {
+    if (m->machine != MACHINE_RISCPC) { ps2mouse_move(&m->mouse, dx, dy); return; }
     m->iomd.mouse_x = (uint16_t)(m->iomd.mouse_x + dx);
     m->iomd.mouse_y = (uint16_t)(m->iomd.mouse_y + dy);
 }
@@ -281,6 +286,7 @@ void riscpc_mouse_move(RiscPc *m, int dx, int dy)
 void riscpc_mouse_buttons(RiscPc *m, int buttons)
 {
     m->mouse_buttons = buttons & 7;
+    ps2mouse_buttons(&m->mouse, buttons);
 }
 
 /* ------------------------------------------------------------------ */
@@ -386,7 +392,9 @@ void riscpc_reset(RiscPc *m)
     iomd_reset(&m->iomd, m->now);
     superio_reset(&m->sio, m->now);
     ps2kbd_reset(&m->kbd);
+    ps2mouse_reset(&m->mouse);
     vidc20_reset(&m->vidc);
+    m->vidc.ref_hz = m->machine == MACHINE_RISCPC ? 24e6 : 32e6;
     arm6_reset(&m->cpu);
     if (m->cpu.fpa) fpa_reset(m->cpu.fpa);
     m->frame_start = m->now;
@@ -398,10 +406,12 @@ void riscpc_reset(RiscPc *m)
 int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
 {
     memset(m, 0, sizeof *m);
+    m->machine = cfg->machine;
     uint32_t mb = cfg->ram_mb ? cfg->ram_mb : 16;
     if (mb < 4 || mb > 64 || (mb & (mb - 1))) mb = 16;
     m->ram_size = mb << 20;
     m->vram_size = (cfg->vram_mb <= 2 ? cfg->vram_mb : 1) << 20;
+    if (m->machine != MACHINE_RISCPC) m->vram_size = 0;   /* A7000: schermo nella DRAM */
     m->ram = calloc(1, m->ram_size);
     m->audio = calloc(RISCPC_AUDIO_FRAMES * 2, sizeof(int16_t));
     build_ulaw();
@@ -421,14 +431,18 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
     m->rom_size = size;
 
     ArmBus bus = { m, bus_r32, bus_r8, bus_w32, bus_w8, bus_r16, bus_w16 };
-    arm6_init(&m->cpu, &bus, cfg->strongarm ? ARM6_ID_SA110 : cfg->arm710 ? ARM6_ID_ARM710 : ARM6_ID_ARM610);
-    if (cfg->fpa) {
+    uint32_t id = cfg->machine == MACHINE_A7000PLUS ? ARM6_ID_ARM7500FE : cfg->machine == MACHINE_A7000 ? ARM6_ID_ARM7500
+                : cfg->strongarm ? ARM6_ID_SA110 : cfg->arm710 ? ARM6_ID_ARM710 : ARM6_ID_ARM610;
+    arm6_init(&m->cpu, &bus, id);
+    if (cfg->fpa || cfg->machine == MACHINE_A7000PLUS) {      /* la FPA11 e' nell'ARM7500FE */
         fpa_init(&m->fpa, FPA_FPA11);
         m->cpu.fpa = &m->fpa;
     }
-    IomdHooks hooks = { m, lines_write, lines_read, to_keyboard, from_keyboard };
+    IomdHooks hooks = { m, lines_write, lines_read, to_keyboard, from_keyboard, to_mouse, from_mouse };
     superio_init(&m->sio);
     iomd_init(&m->iomd, &hooks);
+    iomd_set_type(&m->iomd, cfg->machine == MACHINE_A7000PLUS ? IOMD_ARM7500FE
+                            : cfg->machine == MACHINE_A7000 ? IOMD_ARM7500 : IOMD_RISCPC);
     if (cfg->cmos_path) snprintf(m->cmos_path, sizeof m->cmos_path, "%s", cfg->cmos_path);
     FILE *old = cfg->cmos_path ? fopen(cfg->cmos_path, "rb") : NULL;
     if (old) fclose(old);
@@ -438,6 +452,11 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
            carica l'MDF dell'emulatore: senza, il Display Manager non ha modi */
         m->cmos.ram[0x45] = 0x99;                /* logico &05 FileLangCMOS */
         m->cmos.ram[0x50] |= 0x10;               /* logico &10 DBTBCMOS: Boot */
+        cmos_fix_checksum(&m->cmos);
+        m->cmos.dirty = 1;
+    }
+    if (m->machine != MACHINE_RISCPC && m->cmos.ram[0x5D] != 3) {
+        m->cmos.ram[0x5D] = 3;                   /* logico &1D MouseType: PS/2 */
         cmos_fix_checksum(&m->cmos);
         m->cmos.dirty = 1;
     }
@@ -460,7 +479,8 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
     }
     /* lo StrongARM vero va a 202 MHz ma col bus a 16 MHz; senza le cache e la
        banda della memoria emulate, 100 MHz equivalenti (che stanno nel tempo reale) */
-    m->mhz = cfg->mhz > 0 ? cfg->mhz : cfg->strongarm ? 100 : cfg->arm710 ? 40 : 30;
+    m->mhz = cfg->mhz > 0 ? cfg->mhz : cfg->machine == MACHINE_A7000PLUS ? 48 : cfg->machine == MACHINE_A7000 ? 32
+           : cfg->strongarm ? 100 : cfg->arm710 ? 40 : 30;
     update_speed(m);
     riscpc_reset(m);
     return 1;

@@ -57,6 +57,11 @@ vesa("640 x 512", (64, 96, 0, 640, 0, 32), (3, 15, 0, 512, 0, 2), 60, 3)
 vesa("800 x 600", (128, 88, 0, 800, 0, 40), (4, 23, 0, 600, 0, 1), 60.32, 0)
 vesa("1024 x 768", (136, 160, 0, 1024, 0, 24), (6, 29, 0, 768, 0, 3), 60, 3)
 vesa("", (112, 144, 0, 1152, 0, 64), (3, 30, 0, 896, 0, 3), 60, 3)   # modo 23
+# 1024x768 a 45 Hz per l'A7000+: lo schermo sta nella DRAM e RISC OS accetta
+# un clock dei pixel fino a 46,5 MHz a 256 colori (a 60 Hz ne servono 65).
+# Senza nome: WimpMode X1024 Y768 C256 lo sceglie da solo dove i 60 Hz non
+# ci stanno, il Risc PC resta a 60 Hz.
+modes.append(("", 1024, 768, 44000, (104, 80, 0, 1024, 0, 16), (3, 20, 0, 768, 0, 1), 0))
 vesa("1280 x 1024", (112, 248, 0, 1280, 0, 48), (3, 38, 0, 1024, 0, 1), 60.02, 0)
 
 out = ["# Monitor definition file for ArchieEmu's Risc PC (RISC OS 3.5-3.7),",

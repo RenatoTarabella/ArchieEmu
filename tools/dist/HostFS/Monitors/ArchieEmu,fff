@@ -297,6 +297,16 @@ sync_pol:3
 endmode
 
 startmode
+mode_name:
+x_res:1024
+y_res:768
+pixel_rate:44000
+h_timings:104,80,0,1024,0,16
+v_timings:3,20,0,768,0,1
+sync_pol:0
+endmode
+
+startmode
 mode_name:1280 x 1024
 x_res:1280
 y_res:1024

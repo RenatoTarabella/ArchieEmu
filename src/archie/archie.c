@@ -381,12 +381,12 @@ int archie_create(Archie *a, const ArchieConfig *cfg, char *err, size_t errsize)
 
     uint32_t n = 0;
     uint8_t *raw = load_file(cfg->rom_path, &n);
-    if (!a->ram || !raw) { snprintf(err, errsize, "impossibile leggere la ROM %s", cfg->rom_path); free(raw); return 0; }
+    if (!a->ram || !raw) { snprintf(err, errsize, "cannot read the ROM %s", cfg->rom_path); free(raw); return 0; }
     /* la dimensione utile e' la potenza di due piu' vicina (alcuni dump hanno un byte in piu') */
     uint32_t size = 1;
     while (size * 2 <= n) size *= 2;
     if (size < 0x80000u || size > 0x200000u) {
-        snprintf(err, errsize, "%s: dimensione %u non valida per un Archimedes (512 KB - 2 MB)", cfg->rom_path, n);
+        snprintf(err, errsize, "%s: size %u is not valid for an Archimedes ROM (512 KB - 2 MB)", cfg->rom_path, n);
         free(raw);
         return 0;
     }
@@ -413,7 +413,7 @@ int archie_create(Archie *a, const ArchieConfig *cfg, char *err, size_t errsize)
     fdc_reset(&a->fdc);
     for (int d = 0; d < 2; d++) {
         if (cfg->floppy[d] && !fdc_insert(&a->fdc, d, cfg->floppy[d])) {
-            snprintf(err, errsize, "immagine floppy non valida: %s", cfg->floppy[d]);
+            snprintf(err, errsize, "not a valid floppy image: %s", cfg->floppy[d]);
             return 0;
         }
     }
@@ -424,7 +424,7 @@ int archie_create(Archie *a, const ArchieConfig *cfg, char *err, size_t errsize)
         a->hostfs = malloc(sizeof *a->hostfs);
         if (!a->podule_rom || !a->hostfs ||
             !podule_build(a->podule_rom, a->podule_size, hostfs_module, sizeof hostfs_module, "ArchieEmu HostFS")) {
-            snprintf(err, errsize, "impossibile preparare la scheda HostFS");
+            snprintf(err, errsize, "cannot set up the HostFS podule");
             return 0;
         }
         arc_hostfs_init(a->hostfs, cfg->hostfs_dir, &a->memc);

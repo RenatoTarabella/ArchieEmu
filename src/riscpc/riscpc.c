@@ -419,11 +419,11 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
 
     uint32_t n = 0;
     uint8_t *raw = load_file(cfg->rom_path, &n);
-    if (!m->ram || !raw) { snprintf(err, errsize, "impossibile leggere la ROM %s", cfg->rom_path); free(raw); return 0; }
+    if (!m->ram || !raw) { snprintf(err, errsize, "cannot read the ROM %s", cfg->rom_path); free(raw); return 0; }
     uint32_t size = 1;
     while (size * 2 <= n) size *= 2;
     if (size < 0x200000u || size > 0x800000u) {
-        snprintf(err, errsize, "%s: dimensione %u non valida per un Risc PC (2-8 MB)", cfg->rom_path, n);
+        snprintf(err, errsize, "%s: size %u is not valid for a Risc PC ROM (2-8 MB)", cfg->rom_path, n);
         free(raw);
         return 0;
     }
@@ -468,7 +468,7 @@ int riscpc_create(RiscPc *m, const RiscPcConfig *cfg, char *err, size_t errsize)
         m->hostfs = malloc(sizeof *m->hostfs);
         if (!m->podule_rom || !m->hostfs ||
             !podule_build(m->podule_rom, m->podule_size, hostfs_module, sizeof hostfs_module, "ArchieEmu HostFS")) {
-            snprintf(err, errsize, "impossibile preparare la scheda HostFS");
+            snprintf(err, errsize, "cannot set up the HostFS podule");
             return 0;
         }
         arc_hostfs_init_mem(m->hostfs, cfg->hostfs_dir, hostfs_rd8, hostfs_wr8, m);

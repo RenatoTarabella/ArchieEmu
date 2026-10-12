@@ -28,7 +28,9 @@ through interfaces. It runs in two flavours:
 
 - [**ArchieEmu-1.3-macOS.dmg**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.3/ArchieEmu-1.3-macOS.dmg):
   both machines as native apps. The Archimedes and Risc PC app finds your RISC OS
-  ROMs in `Documents/ArchieEmu/roms` (it asks for a 3.11 ROM if there is none).
+  ROMs in `Documents/ArchieEmu/roms`; **Add ROM...** in the startup dialog copies
+  any ROM image there, whatever its file name, recognising the version from its
+  contents (it asks for one at the first start).
 
 **Linux** (x86-64, glibc 2.34 or later: Ubuntu 22.04, Debian 12 and newer; needs SDL2):
 
@@ -190,7 +192,8 @@ the real RISC OS ROM and talks to the chips, just like the real machine.
 
 The ROMs go in `roms\` and are **not included**: RISC OS 3.x is not open source.
 At startup `archie.exe` lists the ROMs it finds in `roms\` (any subfolder; on the
-Mac also `Documents/ArchieEmu/roms`) and asks which machine to start, with the
+Mac also `Documents/ArchieEmu/roms`, where **Add ROM...** copies an image with any
+name, named by the version it contains) and asks which machine to start, with the
 processor, RAM and VRAM; the choice is remembered (`ArchieEmu.ini` next to the
 exe, the preferences on the Mac) and **Machine > Choose another machine...**
 brings the dialog back. `--rom file` skips it. The CMOS is saved next to the ROM

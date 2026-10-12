@@ -24,10 +24,13 @@ A3000/A310 (ARM2) with Arthur and RISC OS up to 3.11, and a Risc PC (ARM610,
 ARM710 or StrongARM, PC floppy, IDE hard disc, 16-bit sound) with RISC OS 3.5,
 3.6 and 3.7.
 
-THE RISC OS ROMS ARE NOT INCLUDED (they are copyrighted). Put your ROM images
-in Documents/ArchieEmu/roms, named by version: ROM311 for RISC OS 3.11,
-ROM350, ROM360, ROM370, ROM371 for the Risc PC. If there is none, the first
-run asks for a RISC OS 3.11 ROM image and copies it there. At startup a dialog
+THE RISC OS ROMS ARE NOT INCLUDED (they are copyrighted). Add ROM... in the
+startup dialog takes a ROM image with any file name (a single file with the
+whole ROM), recognises the version from its contents and copies it to
+Documents/ArchieEmu/roms as ROM311, ROM350, ROM371...: Arthur to RISC OS 3.11
+for the Archimedes, RISC OS 3.50 to 3.71 for the Risc PC. If there is none, the
+first run asks for one. ROM images can also be put in that folder by hand,
+with any name. At startup a dialog
 asks which machine to start, with ROM, processor, RAM and VRAM; Machine >
 Choose Another Machine... brings it back. The CMOS settings are saved next to
 each ROM.

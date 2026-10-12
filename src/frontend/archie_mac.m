@@ -16,9 +16,10 @@
  * Mouse: sinistro Select, centrale Menu, destro Adjust, come sull'Archimedes;
  * "Right Button Is Menu" (ricordato fra un avvio e l'altro) per il trackpad.
  *
- * La ROM si cerca accanto all'applicazione (roms/1. Major/ROM311) e in
- * ~/Documents/ArchieEmu/roms/ROM311; se manca la si sceglie con una finestra
- * e viene copiata li'. La CMOS si salva accanto alla ROM. La cartella
+ * Le ROM si riconoscono dal contenuto (romlist_detect): quelle scelte con
+ * "Add ROM..." (o all'inizio, se non ce n'e' nessuna) si copiano in
+ * ~/Documents/ArchieEmu/roms col nome della versione (ROM311, ROM371...).
+ * La CMOS si salva accanto alla ROM. La cartella
  * ~/Documents/ArchieEmu/HostFS (o --hostfs) e' il disco HostFS di RISC OS.
  */
 #import <Cocoa/Cocoa.h>
@@ -686,25 +687,7 @@ static const char *find_rom(char *buf, size_t size)
     }
     NSString *mine = [user_folder(@"roms") stringByAppendingPathComponent:@"ROM311"];
     if (exists(mine.fileSystemRepresentation)) { snprintf(buf, size, "%s", mine.fileSystemRepresentation); return buf; }
-
-    /* non c'e': la si chiede all'utente e la si copia in ~/Documents/ArchieEmu/roms */
-    NSAlert *a = [NSAlert new];
-    a.messageText = @"RISC OS ROM not found";
-    a.informativeText = @"ArchieEmu needs a RISC OS 3.11 ROM image (a single 2 MB file), which is not included.\n\n"
-                         "Choose it now: it will be copied to Documents/ArchieEmu/roms/ROM311.";
-    [a addButtonWithTitle:@"Choose ROM..."];
-    [a addButtonWithTitle:@"Quit"];
-    if ([a runModal] != NSAlertFirstButtonReturn) return NULL;
-    NSOpenPanel *p = [NSOpenPanel openPanel];
-    p.title = @"RISC OS 3.11 ROM image";
-    if ([p runModal] != NSModalResponseOK) return NULL;
-    NSError *err = nil;
-    if (![NSFileManager.defaultManager copyItemAtURL:p.URL toURL:[NSURL fileURLWithPath:mine] error:&err]) {
-        show_message(@"Archimedes", err.localizedDescription);
-        return NULL;
-    }
-    snprintf(buf, size, "%s", mine.fileSystemRepresentation);
-    return buf;
+    return NULL;                                /* non c'e': la finestra iniziale */
 }
 
 static void build_menu(void)
@@ -781,13 +764,15 @@ static void scan_rom_dir(NSString *dir, NSString *sub)
         NSString *full = [d stringByAppendingPathComponent:f];
         BOOL isdir = NO;
         if (![NSFileManager.defaultManager fileExistsAtPath:full isDirectory:&isdir] || isdir) continue;
-        int rpc, v = romlist_version(f.UTF8String, &rpc);
+        /* la versione dal contenuto: un ROM311 che contiene la 3.71 e' una 3.71 */
+        int rpc, named = romlist_version(f.UTF8String, &rpc);
+        int v = romlist_detect(full.fileSystemRepresentation, &rpc);
         if (!v || nroms >= 128) continue;
         MacRom *r = &roms[nroms++];
         snprintf(r->path, sizeof r->path, "%s", full.fileSystemRepresentation);
         char name[64];
         romlist_name(v, name, sizeof name);
-        const char *extra = f.UTF8String + 6;
+        const char *extra = named ? f.UTF8String + 6 : f.UTF8String;
         snprintf(r->label, sizeof r->label, "%s%s%s   (%s)", name, *extra ? " " : "", extra,
                  sub ? sub.UTF8String : "roms");
         r->version = v;
@@ -821,6 +806,42 @@ static void scan_roms(void)
     qsort(roms, (size_t)nroms, sizeof roms[0], cmp_rom);
 }
 
+/* Una ROM scelta dall'utente, con un nome qualsiasi: la versione dal contenuto
+   e la copia in Documents/ArchieEmu/roms/ROMnnn. Ritorna il percorso, nil se
+   l'utente rinuncia o il file non e' una ROM che si puo' avviare. */
+static NSString *install_rom(int *version, int *riscpc)
+{
+    NSOpenPanel *p = [NSOpenPanel openPanel];
+    p.title = @"RISC OS ROM image";
+    p.message = @"Choose a RISC OS ROM image: Arthur to RISC OS 3.11 for the Archimedes, "
+                 "RISC OS 3.50 to 3.71 for the Risc PC.";
+    if ([p runModal] != NSModalResponseOK) return nil;
+    int rpc = 0, v = romlist_detect(p.URL.fileSystemRepresentation, &rpc);
+    if (!v) {
+        show_message(@"ArchieEmu", [NSString stringWithFormat:
+            @"%@ is not a RISC OS ROM image that ArchieEmu can run.\n\n"
+             "It needs a single file with the whole ROM (512 KB to 8 MB): Arthur to RISC OS 3.11 "
+             "for the Archimedes, RISC OS 3.50 to 3.71 for the Risc PC.", p.URL.lastPathComponent]);
+        return nil;
+    }
+    NSString *dest = [user_folder(@"roms") stringByAppendingPathComponent:
+                      [NSString stringWithFormat:@"ROM%03d", v]];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if (![p.URL.path.stringByResolvingSymlinksInPath isEqualToString:dest.stringByResolvingSymlinksInPath]) {
+        /* una copia precedente con lo stesso nome (magari un'altra versione sotto
+           il nome sbagliato, come la copiavano le versioni precedenti): la si sostituisce */
+        if ([fm fileExistsAtPath:dest]) [fm removeItemAtPath:dest error:nil];
+        NSError *err = nil;
+        if (![fm copyItemAtURL:p.URL toURL:[NSURL fileURLWithPath:dest] error:&err]) {
+            show_message(@"ArchieEmu", err.localizedDescription);
+            return nil;
+        }
+    }
+    *version = v;
+    *riscpc = rpc;
+    return dest;
+}
+
 typedef struct MachineChoice {
     int  riscpc, cpu, ram_mb, vram_mb;         /* cpu: 0 ARM610, 1 ARM710, 2 StrongARM */
     char rom[PATH_MAX], rom_name[64];
@@ -839,6 +860,10 @@ typedef struct MachineChoice {
 - (void)fill
 {
     NSUserDefaults *u = NSUserDefaults.standardUserDefaults;
+    int have[2] = { 0, 0 };
+    for (int i = 0; i < nroms; i++) have[roms[i].riscpc] = 1;
+    self.archie.enabled = have[0];
+    self.riscpc.enabled = have[1];
     int rpc = self.rpc;
     NSString *want = [u stringForKey:rpc ? @"RomRiscPC" : @"RomArchimedes"];
     [self.rom removeAllItems];
@@ -893,6 +918,18 @@ typedef struct MachineChoice {
     [self fill];
 }
 
+/* Add ROM...: la si copia col nome della versione e la si sceglie */
+- (void)addRomPressed:(id)s
+{
+    (void)s;
+    int v, rpc;
+    NSString *path = install_rom(&v, &rpc);
+    if (!path) return;
+    scan_roms();
+    [NSUserDefaults.standardUserDefaults setObject:path forKey:rpc ? @"RomRiscPC" : @"RomArchimedes"];
+    [self machineChanged:rpc ? self.riscpc : self.archie];
+}
+
 - (void)startPressed:(id)s { (void)s; [NSApp stopModalWithCode:NSModalResponseOK]; }
 - (void)quitPressed:(id)s { (void)s; [NSApp stopModalWithCode:NSModalResponseCancel]; }
 
@@ -906,12 +943,29 @@ static NSTextField *label(NSString *text, NSRect r, NSFont *font)
     return t;
 }
 
-/* ritorna 0 se l'utente rinuncia (o non ci sono ROM: allora found = 0) */
+/* ritorna 0 se l'utente rinuncia (found = 1: si esce) */
 static int run_splash(MachineChoice *c, int *found)
 {
     scan_roms();
-    *found = nroms > 0;
-    if (!nroms) return 0;
+    *found = 1;
+    while (!nroms) {
+        /* nessuna ROM: la si chiede subito, di qualunque versione */
+        NSAlert *a = [NSAlert new];
+        a.messageText = @"No RISC OS ROMs found";
+        a.informativeText = @"ArchieEmu needs a RISC OS ROM image, which is not included: Arthur to "
+                             "RISC OS 3.11 for the Archimedes, RISC OS 3.50 to 3.71 for the Risc PC.\n\n"
+                             "Choose one now: it will be copied to Documents/ArchieEmu/roms, named by its "
+                             "version (ROM311, ROM350, ROM371...). More can be added later with Add ROM.";
+        [a addButtonWithTitle:@"Choose ROM..."];
+        [a addButtonWithTitle:@"Quit"];
+        if ([a runModal] != NSAlertFirstButtonReturn) return 0;
+        int v, rpc;
+        NSString *path = install_rom(&v, &rpc);
+        if (!path) continue;
+        [NSUserDefaults.standardUserDefaults setBool:rpc forKey:@"RiscPC"];
+        [NSUserDefaults.standardUserDefaults setObject:path forKey:rpc ? @"RomRiscPC" : @"RomArchimedes"];
+        scan_roms();
+    }
     int have[2] = { 0, 0 };
     for (int i = 0; i < nroms; i++) have[roms[i].riscpc] = 1;
 
@@ -929,8 +983,6 @@ static int run_splash(MachineChoice *c, int *found)
     sc.riscpc = [NSButton radioButtonWithTitle:@"Acorn Risc PC   (ARM6/ARM7/StrongARM, RISC OS 3.5 to 3.7)"
                                         target:sc action:@selector(machineChanged:)];
     sc.riscpc.frame = NSMakeRect(20, 210, 440, 22);
-    sc.archie.enabled = have[0];
-    sc.riscpc.enabled = have[1];
     [v addSubview:sc.archie];
     [v addSubview:sc.riscpc];
 
@@ -958,6 +1010,9 @@ static int run_splash(MachineChoice *c, int *found)
     NSButton *quit = [NSButton buttonWithTitle:@"Quit" target:sc action:@selector(quitPressed:)];
     quit.frame = NSMakeRect(370, 16, 96, 30);
     quit.keyEquivalent = @"\e";
+    NSButton *add = [NSButton buttonWithTitle:@"Add ROM..." target:sc action:@selector(addRomPressed:)];
+    add.frame = NSMakeRect(14, 16, 110, 30);
+    [v addSubview:add];
     [v addSubview:sc.start];
     [v addSubview:quit];
 
@@ -1026,11 +1081,13 @@ int main(int argc, char **argv)
         NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
         [NSApp activateIgnoringOtherApps:YES];
 
-        /* quale macchina: la finestra iniziale, oppure --rom (la macchina dal nome della ROM) */
+        /* quale macchina: la finestra iniziale, oppure --rom (la macchina dal contenuto
+           della ROM); con un dischetto da aprire, la 3.11 se c'e' */
         static char rom_buf[PATH_MAX], cmos_buf[PATH_MAX];
         MachineChoice mc;
         memset(&mc, 0, sizeof mc);
-        if (!cfg.rom_path && (choose || !cfg.floppy[0])) {
+        if (!cfg.rom_path && !choose && cfg.floppy[0]) cfg.rom_path = find_rom(rom_buf, sizeof rom_buf);
+        if (!cfg.rom_path) {
             int found = 0;
             if (run_splash(&mc, &found)) {
                 snprintf(rom_buf, sizeof rom_buf, "%s", mc.rom);
@@ -1041,16 +1098,12 @@ int main(int argc, char **argv)
                 arm710 = mc.cpu == 1;
                 strongarm = mc.cpu == 2;
                 snprintf(app.rom_name, sizeof app.rom_name, "%s", mc.rom_name);
-            } else if (found) {
+            } else {
                 return 0;                                       /* Quit */
             }
         }
-        if (!cfg.rom_path) {
-            /* nessuna ROM nelle cartelle: la si chiede (RISC OS 3.11 per l'Archimedes) */
-            if (!(cfg.rom_path = find_rom(rom_buf, sizeof rom_buf))) return 1;
-        }
         if (!app.rom_name[0]) {
-            int rpc = 0, v = romlist_version(cfg.rom_path, &rpc);
+            int rpc = 0, v = romlist_detect(cfg.rom_path, &rpc);
             app.rpc = rpc || force_rpc;
             if (v) romlist_name(v, app.rom_name, sizeof app.rom_name);
             else   snprintf(app.rom_name, sizeof app.rom_name, "%s", base_name(cfg.rom_path));

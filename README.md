@@ -26,7 +26,7 @@ through interfaces. It runs in two flavours:
 
 **macOS** (Apple Silicon and Intel, macOS 11 or later), signed and notarized:
 
-- [**ArchieEmu-1.3-macOS.dmg**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.3/ArchieEmu-1.3-macOS.dmg):
+- [**ArchieEmu-1.3.1-macOS.dmg**](https://github.com/RenatoTarabella/ArchieEmu/releases/download/v1.3.1/ArchieEmu-1.3.1-macOS.dmg):
   both machines as native apps. The Archimedes and Risc PC app finds your RISC OS
   ROMs in `Documents/ArchieEmu/roms`; **Add ROM...** in the startup dialog copies
   any ROM image there, whatever its file name, recognising the version from its

@@ -42,6 +42,7 @@
 #include "riscpc/hdformat.h"
 #include "archie_keys.h"
 #include "splash_win32.h"
+#include "scale_area.h"
 
 #define FRAME_HZ   50
 #define TURBO_MHZ  64.0
@@ -252,7 +253,26 @@ static void present(HDC dc)
     bi.bmiHeader.biPlanes = 1;
     bi.bmiHeader.biBitCount = 32;
     bi.bmiHeader.biCompression = BI_RGB;
-    SetStretchBltMode(dc, COLORONCOLOR);
+    /* scala intera: pixel netti. Non intera: il pixel piu' vicino rende le linee
+       spesse 1 o 2 punti a caso (1024x768 in una finestra allargata) e HALFTONE
+       ingrandendo non e' meglio, quindi ingrandimento ad area; HALFTONE solo
+       per rimpicciolire */
+    if (sw % w == 0 && sh % h == 0) {
+        SetStretchBltMode(dc, COLORONCOLOR);
+    } else if (sw >= w && sh >= h) {
+        const uint32_t *s = scale_area(app.pixels, BUF_W, w, h, sw, sh);
+        if (s) {
+            bi.bmiHeader.biWidth = sw;
+            bi.bmiHeader.biHeight = -sh;
+            SetStretchBltMode(dc, COLORONCOLOR);
+            StretchDIBits(dc, ox, oy, sw, sh, 0, 0, sw, sh, s, &bi, DIB_RGB_COLORS, SRCCOPY);
+            return;
+        }
+        SetStretchBltMode(dc, COLORONCOLOR);
+    } else {
+        SetStretchBltMode(dc, HALFTONE);
+        SetBrushOrgEx(dc, 0, 0, NULL);
+    }
     StretchDIBits(dc, ox, oy, sw, sh, 0, 0, w, h, app.pixels, &bi, DIB_RGB_COLORS, SRCCOPY);
 }
 

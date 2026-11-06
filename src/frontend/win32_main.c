@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "machine/machine.h"
+#include "scale_area.h"
 
 #define FRAME_HZ     50
 #define FLASH_CS     25            /* periodo del lampeggio (come *FX 9/10) */
@@ -232,7 +233,24 @@ static void present(HDC dc)
     bi.bmiHeader.biPlanes = 1;
     bi.bmiHeader.biBitCount = 32;
     bi.bmiHeader.biCompression = BI_RGB;
-    SetStretchBltMode(dc, COLORONCOLOR);
+    /* scala intera: pixel netti; ingrandimento non intero ad area, HALFTONE per
+       rimpicciolire (vedi archie_win32.c) */
+    if (sw % v->width == 0 && sh % v->height == 0) {
+        SetStretchBltMode(dc, COLORONCOLOR);
+    } else if (sw >= v->width && sh >= v->height) {
+        const uint32_t *s = scale_area(app.pixels, v->width, v->width, v->height, sw, sh);
+        if (s) {
+            bi.bmiHeader.biWidth = sw;
+            bi.bmiHeader.biHeight = -sh;
+            SetStretchBltMode(dc, COLORONCOLOR);
+            StretchDIBits(dc, ox, oy, sw, sh, 0, 0, sw, sh, s, &bi, DIB_RGB_COLORS, SRCCOPY);
+            return;
+        }
+        SetStretchBltMode(dc, COLORONCOLOR);
+    } else {
+        SetStretchBltMode(dc, HALFTONE);
+        SetBrushOrgEx(dc, 0, 0, NULL);
+    }
     StretchDIBits(dc, ox, oy, sw, sh, 0, 0, v->width, v->height, app.pixels, &bi, DIB_RGB_COLORS, SRCCOPY);
 }
 

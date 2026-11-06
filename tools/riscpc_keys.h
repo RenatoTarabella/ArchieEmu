@@ -4,6 +4,8 @@
  * Testo normale (tastiera UK) e token:
  *   {F12} {ENTER} {ESC} {TAB} {UP} {DOWN} {LEFT} {RIGHT} {VKxx} {SVKxx}
  *   {WAIT} (5 s)  {MOUSE dx,dy} (y verso l'alto)  {SELECT} {MENU} {ADJUST} (clic)
+ *   {BUTTONS n}: pulsanti tenuti premuti (4 Select, 2 Menu, 1 Adjust; 0 = rilasciati),
+ *   per i trascinamenti: {BUTTONS 1}{MOUSE 100,0}{BUTTONS 0}
  * Un passo ogni 40 ms (RISC OS legge la tastiera a ogni centesimo).
  */
 #ifndef RISCPC_KEYS_H
@@ -80,6 +82,10 @@ static void parse_keys(const char *s)
             push_step(STEP_BUTTONS, 0, b, 0);
             push_step(STEP_BUTTONS, 0, 0, 0);
             s = strchr(s, '}') + 1;
+        } else if (!strncmp(s, "{BUTTONS", 8)) {
+            char *e;
+            push_step(STEP_BUTTONS, 0, (int)strtol(s + 8, &e, 10), 0);
+            s = *e == '}' ? e + 1 : e;
         } else if (!strncmp(s, "{VK", 3) || !strncmp(s, "{SVK", 4)) {
             int shift = s[1] == 'S';
             push_vk((int)strtol(s + (shift ? 4 : 3), NULL, 16), shift, 0);

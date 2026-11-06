@@ -70,7 +70,7 @@ target_include_directories(armbasic PRIVATE src/frontend)
 
 # Macchina con il BASIC: finestra Win32
 if(WIN32)
-    add_executable(armwin WIN32 src/frontend/win32_main.c res/armwin.rc)
+    add_executable(armwin WIN32 src/frontend/win32_main.c src/frontend/scale_area.c res/armwin.rc)
     target_link_libraries(armwin armcore winmm)
     if(MSVC)
         set_target_properties(armwin PROPERTIES LINK_FLAGS "/ENTRY:mainCRTStartup")
@@ -169,7 +169,8 @@ endforeach()
 # Finestra della macchina Archimedes
 if(WIN32)
     add_executable(archie WIN32 src/frontend/archie_win32.c src/frontend/archie_keys.c
-                   src/frontend/splash_win32.c src/frontend/romlist.c res/armwin.rc)
+                   src/frontend/splash_win32.c src/frontend/romlist.c src/frontend/scale_area.c
+                   res/armwin.rc)
     target_include_directories(archie PRIVATE src/frontend)
     target_link_libraries(archie riscpccore archiecore winmm shell32 comdlg32)
     if(MSVC)

@@ -23,7 +23,14 @@ void superio_reset(SuperIo *s, ArcTime now)
 uint8_t superio_read(SuperIo *s, uint32_t port, ArcTime now, int *known)
 {
     *known = 1;
-    if (s->config_mode && port == 0x3F1) return s->config[s->config_index & 15];
+    if (s->config_mode && port == 0x3F1) {
+        /* identita' &65 e revisione all'indice &0D/&0E, in sola lettura: RISC OS
+           3.7 senza &65 non abilita il disco IDE (ADFS non lo cerca nemmeno);
+           3.5 legge l'indice ma programma il 37C665 comunque */
+        if ((s->config_index & 15) == 0x0D) return 0x65;
+        if ((s->config_index & 15) == 0x0E) return 0x02;
+        return s->config[s->config_index & 15];
+    }
     switch (port) {
     case 0x3F2: case 0x3F4: case 0x3F5: case 0x3F7:
         return fdc82077_read(&s->fdc, (int)(port & 7), now);
